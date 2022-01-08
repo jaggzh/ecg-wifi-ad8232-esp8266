@@ -4,6 +4,8 @@ tags: *.cpp *.c *.ino *.h
 vi:
 	vim \
 		ecg-wifi-ad8232-esp8266.ino \
+		websocket.cpp \
+		websocket.h \
 		Makefile \
 		README.md \
 		wifi.cpp \

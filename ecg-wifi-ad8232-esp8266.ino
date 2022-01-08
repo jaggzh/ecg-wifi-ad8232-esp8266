@@ -3,6 +3,7 @@
 #include "wifi_config.h"
 #include "ota.h"
 #include "printutils.h"
+#include "websocket.h"
 
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
@@ -39,12 +40,13 @@ void setup () {
 	Serial.begin(bauds[baudi]);
 	setup_wifi();
 	setup_ota();
+	ws_setup();
 	pinMode(14, INPUT);  // Setup for leads off detection LO +
 	pinMode(12, INPUT);  // Setup for leads off detection LO -
 }
 
 unsigned int avg(int *vals, unsigned char cnt) {
-	int32_t tot;
+	int32_t tot=0;
 	for (unsigned char i=0; i<cnt; i++) tot += vals[i];
 	tot /= cnt;
 	return (unsigned int) tot;
@@ -67,6 +69,9 @@ void loop () {
 			Serial.print('\t');
 			Serial.println(slow);
 		#endif
+		#ifdef SEND_TO_WEBSOCKET
+			ws_add(v);
+		#endif
 		// send the value of analog input 0:
 	}
 	// \/ came from some webpage. We have enough other stuff going on though
@@ -82,6 +87,10 @@ void loop () {
 				break;
 		}
 	}
-	loop_check_wifi();
 	loop_ota();
+	uint16_t connflags;
+	connflags = loop_check_wifi();
+	if (!connflags & WIFI_FLAG_RECONNECTED) ws_net_disconnected();
+	else ws_net_connect();
+	ws_loop();
 }

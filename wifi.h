@@ -1,3 +1,6 @@
+#define WIFI_FLAG_CONNECTED   0x01
+#define WIFI_FLAG_RECONNECTED 0x02
+
 void setup_wifi(void);
 
  // Can be called any time, but it won't do any processing except after 3s,
@@ -16,10 +19,10 @@ void setup_wifi(void);
  //
  // Once connected it will remember and won't output
  // again until the status changes.
-bool loop_check_wifi();  // optional, for connection status Serial output
+uint16_t loop_check_wifi();  // optional, for connection status Serial output
 void loop_wifi();        // Required for loop updates
 
 // Wait max of passed seconds for wifi
 // Returns true immediately upon success
 // False after timeout expires
-bool setup_wait_wifi(int timeout_s=10);
+uint16_t setup_wait_wifi(int timeout_s=10);

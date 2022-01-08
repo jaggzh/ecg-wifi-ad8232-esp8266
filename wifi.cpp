@@ -20,9 +20,9 @@ void setup_wifi(void) {
 }
 
 // Wait max of passed seconds for wifi
-// Returns true immediately upon success
-// False after timeout expires
-bool setup_wait_wifi(int timeout_s) {
+// Returns flags immediately upon success (eg. WIFI_FLAG_CONNECTED)
+// Return flags of 0 means NOT connected for timeout period
+uint16_t setup_wait_wifi(int timeout_s) {
 	int mil = millis();
 	bool ret;
 	while (((millis() - mil)/1000) < timeout_s) {
@@ -30,15 +30,15 @@ bool setup_wait_wifi(int timeout_s) {
 		if (ret) return ret;
 		delay(1000);
 	}
-	return false;
+	return 0;
 }
 
-bool loop_check_wifi() {
+uint16_t loop_check_wifi() {
 	static int connected=false;
 	int cur_millis = millis();
 	static int last_wifi_millis = cur_millis;
 	static int last_connect_millis = 0;
-	if (cur_millis - last_wifi_millis > 3000) {
+	if (cur_millis - last_wifi_millis > 1000) {
 		last_wifi_millis = cur_millis;
 		if (WiFi.status() == WL_CONNECTED) {
 			if (!connected) { // only if we toggled state
@@ -48,7 +48,7 @@ bool loop_check_wifi() {
 				sp(ssid);
 				sp(". IP: ");
 				spl(WiFi.localIP());
-				return true;
+				return (WIFI_FLAG_CONNECTED | WIFI_FLAG_RECONNECTED);
 			}
 		} else {
 			if (!connected) {
@@ -62,7 +62,7 @@ bool loop_check_wifi() {
 			}
 		}
 	}
-	return false;
+	return 0; // not connected
 }
 
 void onConnectionEstablished() {

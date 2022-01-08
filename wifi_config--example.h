@@ -12,6 +12,10 @@
 
 #define MAX_MS_BEFORE_RECONNECT 15000
 
+// Your websockets "server:port" for data
+#define WS_HOST "192.168.1.4"
+#define WS_PORT 1234
+#define WS_PATH "/"
 
 #ifdef __WIFI_CPP
 const char *ssid = SSID_NAME;
