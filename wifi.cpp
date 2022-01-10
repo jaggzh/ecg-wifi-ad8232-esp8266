@@ -28,7 +28,7 @@ uint16_t setup_wait_wifi(int timeout_s) {
 	while (((millis() - mil)/1000) < timeout_s) {
 		ret = loop_check_wifi(); // after 3s this fn will start printing to serial
 		if (ret) return ret;
-		delay(1000);
+		delay(99);
 	}
 	return 0;
 }
@@ -49,6 +49,8 @@ uint16_t loop_check_wifi() {
 				sp(". IP: ");
 				spl(WiFi.localIP());
 				return (WIFI_FLAG_CONNECTED | WIFI_FLAG_RECONNECTED);
+			} else {
+				return WIFI_FLAG_CONNECTED;
 			}
 		} else {
 			if (!connected) {

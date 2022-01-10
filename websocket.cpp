@@ -16,22 +16,20 @@ void ws_loop() {
 	_ws_client.poll();
 }
 
+struct ecg_packet {
+	uint32_t mil;
+	uint16_t val;
+};
+
 void ws_add(int v) {
 	unsigned long mil;
-	int dowss=0;
+	volatile int dowss=0;
 	if (_ws_connected) {
-		char data[6];
-		mil = millis();
-		data[0] = ((char *)mil)[0];
-		data[1] = ((char *)mil)[1];
-		data[2] = ((char *)mil)[2];
-		data[3] = ((char *)mil)[3];
-		data[4] = ((char *)v)[0];
-		data[5] = ((char *)v)[1];
-		if (dowss) {
+		struct ecg_packet packy;
+		packy.mil = millis();
+		packy.val = v;
 		//Serial.print("_ws_client: "); Serial.println((unsigned int)_ws_client); Serial.flush();
-			_ws_client.sendBinary(data, 6);
-		}
+		//_ws_client.sendBinary((char *)&packy, sizeof(packy));
 		/* Serial.print(_ws_client.sendBinary(data, 6)); */
 		/* Serial.println(_ws_client.sendBinary(data, 6)); */
 		/* Serial.print(mil); */
@@ -45,11 +43,13 @@ void ws_net_disconnected() { // inform wifi disconnected
 }
 
 void ws_net_connect() {
-	bool connected = _ws_client.connect(WS_HOST, WS_PORT, WS_PATH);
-	if (connected) {
-		Serial.println("WS connected! (ws_net_connect(). also ensure cb works)");
-		_ws_client.send("login 123456");
-		_ws_connected = true;
+	if (!_ws_connected) {
+		bool connected = _ws_client.connect(WS_HOST, WS_PORT, WS_PATH);
+		if (connected) {
+			Serial.println("WS connected! (ws_net_connect(). also ensure cb works)");
+			_ws_client.send("login 123456");
+			_ws_connected = true;
+		}
 	} else {
 		// Serial.println("Not Connected!");
 	}
@@ -62,8 +62,12 @@ void onMessageCallback(WebsocketsMessage message) {
 
 void onEventsCallback(WebsocketsEvent event, String data) {
 	if(event == WebsocketsEvent::ConnectionOpened) {
-		Serial.println("WS CB: Connnection Opened");
-		_ws_connected = true;
+		if (_ws_connected) {
+			Serial.println("WS CB: Already connected. Why are we receiving this CB?");
+		} else {
+			Serial.println("WS CB: Connnection Opened");
+			_ws_connected = true;
+		}
 	} else if(event == WebsocketsEvent::ConnectionClosed) {
 		Serial.println("WS CB: Connnection Closed");
 		_ws_connected = false;

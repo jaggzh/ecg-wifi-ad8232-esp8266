@@ -98,7 +98,9 @@ void loop () {
 	loop_ota();
 	uint16_t connflags;
 	connflags = loop_check_wifi();
-	if (!connflags & WIFI_FLAG_RECONNECTED) ws_net_disconnected();
-	else ws_net_connect();
+	if ((connflags & WIFI_FLAG_CONNECTED))
+		ws_net_connect();
+	else
+		ws_net_disconnected();
 	ws_loop();
 }
