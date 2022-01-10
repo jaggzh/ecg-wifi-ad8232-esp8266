@@ -18,6 +18,7 @@ void ws_loop() {
 
 void ws_add(int v) {
 	unsigned long mil;
+	int dowss=0;
 	if (_ws_connected) {
 		char data[6];
 		mil = millis();
@@ -27,10 +28,15 @@ void ws_add(int v) {
 		data[3] = ((char *)mil)[3];
 		data[4] = ((char *)v)[0];
 		data[5] = ((char *)v)[1];
-		_ws_client.send(data, 6);
-		Serial.print(mil);
-		Serial.print(" ");
-		Serial.println(v);
+		if (dowss) {
+		//Serial.print("_ws_client: "); Serial.println((unsigned int)_ws_client); Serial.flush();
+			_ws_client.sendBinary(data, 6);
+		}
+		/* Serial.print(_ws_client.sendBinary(data, 6)); */
+		/* Serial.println(_ws_client.sendBinary(data, 6)); */
+		/* Serial.print(mil); */
+		/* Serial.print(" "); */
+		/* Serial.println(v); */
 	}
 }
 
@@ -45,7 +51,7 @@ void ws_net_connect() {
 		_ws_client.send("login 123456");
 		_ws_connected = true;
 	} else {
-		Serial.println("Not Connected!");
+		// Serial.println("Not Connected!");
 	}
 }
 

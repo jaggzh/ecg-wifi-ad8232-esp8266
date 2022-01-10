@@ -10,8 +10,6 @@ vi:
 		README.md \
 		wifi.cpp \
 		wifi.h \
-		log.cpp \
-		log.h \
 		settings.h \
 		ota.cpp \
 		ota.h \

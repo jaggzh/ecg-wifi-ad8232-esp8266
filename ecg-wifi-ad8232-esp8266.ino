@@ -1,3 +1,4 @@
+#include <GDBStub.h>
 #include "settings.h"
 #include "wifi.h"
 #include "wifi_config.h"
@@ -8,6 +9,7 @@
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
 uint8_t baudi=2; // start at this baud
+uint32_t us_last_sample=micros();
 
 void baudnext() {
 	if (baudi < BAUDSCNT-1) {
@@ -38,6 +40,7 @@ void serial_reconnect() {
 void setup () {
 // initialize the serial communication:
 	Serial.begin(bauds[baudi]);
+	gdbstub_init();
 	setup_wifi();
 	setup_ota();
 	ws_setup();
@@ -55,24 +58,29 @@ unsigned int avg(int *vals, unsigned char cnt) {
 void loop () {
 	static int slow=0;
 	static int avv[AVGCNT];
-	static int8_t  avvi=0;
-	if ((digitalRead(10) == 1) || (digitalRead(11) == 1)) {
-		Serial.println('!');
-	} else {
-		int v;
-		v=analogRead(A0);
-		avv[avvi] = v;
-		if (++avvi >= AVGCNT) avvi=0;
-		slow = avg(avv, AVGCNT);
-		#ifdef PLOT_TO_SERIAL
-			Serial.print(v);
-			Serial.print('\t');
-			Serial.println(slow);
-		#endif
-		#ifdef SEND_TO_WEBSOCKET
-			ws_add(v);
-		#endif
-		// send the value of analog input 0:
+	static uint8_t avvi=0;
+	uint32_t cmicros = micros();
+
+	if (cmicros-us_last_sample >= US_SAMPLES) {
+		us_last_sample -= US_SAMPLES;
+		if ((digitalRead(10) == 1) || (digitalRead(11) == 1)) {
+			Serial.println('!');
+		} else {
+			int v;
+			v=analogRead(A0);
+			avv[avvi] = v;
+			if (++avvi >= AVGCNT) avvi=0;
+			slow = avg(avv, AVGCNT);
+			#ifdef PLOT_TO_SERIAL
+				Serial.print(v);
+				Serial.print('\t');
+				Serial.println(slow);
+			#endif
+			#ifdef SEND_TO_WEBSOCKET
+				ws_add(v);
+			#endif
+			// send the value of analog input 0:
+		}
 	}
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
