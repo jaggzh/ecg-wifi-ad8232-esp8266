@@ -27,8 +27,13 @@ struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
 };
 
-struct ecg_packet pack_o_packets[MAX_PACKETS+1];
+//struct ecg_packet pack_o_packets[MAX_PACKETS+1];
 
+// Matches client .ino
+#define PAK_SIZE (4+2)
+#define MAX_PACKETS  (400/PAK_SIZE) // fit within ESP's packet (524?)
+char ecg_netdata[(4+2)*MAX_PACKETS];
+int nextpacketi=0;
 
 int main(int argc, char *argv[]) {
 	setup();
