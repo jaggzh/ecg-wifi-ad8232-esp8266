@@ -9,6 +9,9 @@ clean:
 server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h
 	gcc $(CFLAGS) -std=gnu17 -o server_cbs main.c server_cbs.c -pthread
 
+tags:
+	ctags *.c *.h
+
 vi:
 	vim \
 		Makefile \
@@ -16,6 +19,8 @@ vi:
 		server_cbs.h \
 		main.c \
 		main.h \
+		serialize.c \
+		serialize.h \
 		../server-websockets/server.cc \
 		settings-example.h \
 		settings.h

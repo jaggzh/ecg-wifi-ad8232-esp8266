@@ -1,5 +1,6 @@
 #define WIFI_FLAG_CONNECTED   0x01
 #define WIFI_FLAG_RECONNECTED 0x02
+#define WIFI_FLAG_IGNORE      0x04
 
 void setup_wifi(void);
 

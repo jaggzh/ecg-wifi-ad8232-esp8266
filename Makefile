@@ -3,10 +3,14 @@ tags: *.cpp *.c *.ino *.h
 
 vi:
 	vim \
-		ecg-wifi-ad8232-esp8266.ino \
-		websocket.cpp \
-		websocket.h \
 		Makefile \
+		ecg-wifi-ad8232-esp8266.ino \
+		netdata.cpp \
+		netdata.h \
+		serialize.c \
+		serialize.h \
+		bak/websocket.cpp \
+		bak/websocket.h \
 		README.md \
 		wifi.cpp \
 		wifi.h \

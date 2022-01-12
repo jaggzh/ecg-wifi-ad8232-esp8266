@@ -38,7 +38,9 @@ uint16_t loop_check_wifi() {
 	int cur_millis = millis();
 	static int last_wifi_millis = cur_millis;
 	static int last_connect_millis = 0;
-	if (cur_millis - last_wifi_millis > 1000) {
+	if (cur_millis - last_wifi_millis < 1000) {
+		return WIFI_FLAG_IGNORE;
+	} else {
 		last_wifi_millis = cur_millis;
 		if (WiFi.status() == WL_CONNECTED) {
 			if (!connected) { // only if we toggled state

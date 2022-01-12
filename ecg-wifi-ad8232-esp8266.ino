@@ -4,12 +4,13 @@
 #include "wifi_config.h"
 #include "ota.h"
 #include "printutils.h"
-#include "websocket.h"
+#include "netdata.h"
 
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
 uint8_t baudi=2; // start at this baud
 uint32_t us_last_sample=micros();
+int netdata_pause=0;
 
 void baudnext() {
 	if (baudi < BAUDSCNT-1) {
@@ -43,7 +44,7 @@ void setup () {
 	gdbstub_init();
 	setup_wifi();
 	setup_ota();
-	ws_setup();
+	setup_netdata();
 	pinMode(14, INPUT);  // Setup for leads off detection LO +
 	pinMode(12, INPUT);  // Setup for leads off detection LO -
 }
@@ -77,7 +78,7 @@ void loop () {
 				Serial.println(slow);
 			#endif
 			#ifdef SEND_TO_WEBSOCKET
-				ws_add(v);
+				netdata_add(v);
 			#endif
 			// send the value of analog input 0:
 		}
@@ -90,17 +91,21 @@ void loop () {
 		switch (ichar) {
 			case '+': baudnext(); break;
 			case '-': baudprior(); break;
+			case 'p': netdata_pause = !netdata_pause; break;
 			default:
-				spl("Help: -/+ change baud");
+				spl("Help: -/+ change baud. (p)ause data.");
 				break;
 		}
 	}
 	loop_ota();
 	uint16_t connflags;
 	connflags = loop_check_wifi();
-	if ((connflags & WIFI_FLAG_CONNECTED))
-		ws_net_connect();
-	else
-		ws_net_disconnected();
-	ws_loop();
+	/* if (connflags & WIFI_FLAG_IGNORE) {} */
+	/* else { */
+	/* 	if ((connflags & WIFI_FLAG_CONNECTED)) ws_net_connect(); */
+	/* 	else                                   ws_net_disconnected(); */
+	/* } */
+	if (connflags & WIFI_FLAG_CONNECTED) {
+		if (!netdata_pause) loop_netdata();
+	}
 }

@@ -27,6 +27,9 @@ struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
 };
 
+struct ecg_packet pack_o_packets[MAX_PACKETS+1];
+
+
 int main(int argc, char *argv[]) {
 	setup();
 	svr_start(PORT); // doesn't end until dead
@@ -100,7 +103,7 @@ void our_cb_cl_read(                // called on data read
 		} else {                                      // success
 			char s_loginfail[]="Not logged in\n";
 			write(sockfd, s_loginfail, sizeof(s_loginfail)-1);
-			printf("Login failure\n");
+			printf("Not logged in\n");
 		}
 	} else {
 		process_user_data(buf, buflen);
@@ -109,6 +112,11 @@ void our_cb_cl_read(                // called on data read
 
 // \/  called for each read after user login
 void process_user_data(char *buf, int buflen) {
+	printf("Struct size: %d\n", sizeof(struct ecg_packet));
+	printf("Received %d bytes, expected max %d.\n", buflen, MAX_PACKETS_LEN);
+	printf("         %d packets, expected max %d.\n",
+			buflen/sizeof(struct ecg_packet),
+			MAX_PACKETS);
 	if (!fwrite(buf, buflen, 1, connst.dataf)) {
 		// \/ separate in case some segfault or something
 		printf("Error writing to data file: "); fflush(stdout);
