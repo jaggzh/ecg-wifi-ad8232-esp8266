@@ -24,7 +24,7 @@ struct CMDConnData {
     char *datafn;
 	FILE *dataf;
 	int sockfd;
-	struct magicbuf mb;
+	struct magicbuf mbuf;
 };
 struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
@@ -40,7 +40,7 @@ char ecg_netdata[(4+2)*MAX_PACKETS];
 int nextpacketi=0;
 
 char stmag[]=MAGIC_ST;
-char stend[]=MAGIC_EN;
+char enmag[]=MAGIC_EN;
 
 
 int main(int argc, char *argv[]) {
@@ -71,11 +71,9 @@ void our_cb_cl_connect(
 		) {
 	printf("---> CB: Client connected: IP=%s\n", ipstr);
 	connst.sockfd = sockfd;
-	mbuf_new(&connst.mb,
-			stmag,
-			 st_mag_sz,
-			enmag,
-			 en_mag_sz
+	mbuf_new(&connst.mbuf,
+			stmag,  sizeof(stmag),
+			enmag,  sizeof(enmag)
 			);
 }
 
@@ -142,7 +140,7 @@ void show_packets(uint8_t *buf, int buflen) {
 
 // \/  called for each read after user login
 void process_ip_packet(char *buf, int buflen) {
-	mb->add(mb, buf, buflen)
+	connst.mbuf.add(&connst.mbuf, buf, buflen);
 	//show_packets(buf, buflen);
 	return;
 	// don't write

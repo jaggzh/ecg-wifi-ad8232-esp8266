@@ -19,10 +19,11 @@ void setup_wifi(void) {
 	WiFi.persistent(true);       // reconnect to prior access point
 }
 
+// Optional call to use if trying to requiring wifi during setup()
 // Wait max of passed seconds for wifi
 // Returns flags immediately upon success (eg. WIFI_FLAG_CONNECTED)
 // Return flags of 0 means NOT connected for timeout period
-uint16_t setup_wait_wifi(int timeout_s) {
+uint16_t setup_wait_wifi(unsigned int timeout_s) {
 	int mil = millis();
 	bool ret;
 	while (((millis() - mil)/1000) < timeout_s) {

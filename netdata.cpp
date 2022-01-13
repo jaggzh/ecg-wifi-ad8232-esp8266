@@ -40,8 +40,8 @@ void netdata_add(uint16_t v) { // call to add value to send
 	// void packi32(unsigned char *buf, unsigned long int i)
 	uint32_t us;
 	// us = micros();
-	us = *((uint32_t *)"ABCD");
-	uint16_t testval = *((uint16_t *)"YZ");
+	us = *((uint32_t *)"abcd");
+	uint16_t testval = *((uint16_t *)"yz");
 	packi32(ecg_netdata + (nextpacketi*PAK_SIZE), us);
 	packi16(ecg_netdata + (nextpacketi*PAK_SIZE) + 4, testval);
 	/* Serial.print(" u:"); */

@@ -1,23 +1,24 @@
 CFLAGS=-O3         # Either optimized or gdb debug
 CFLAGS=-ggdb3
 
-all: magicbuf_test
+main: server_cbs
 
-#all: server_cbs
+tests: magicbuf_test
 
 clean:
 	rm server_cbs
 
 server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h \
-		serialize.c serialize.h
+		serialize.c serialize.h magicbuf.c magicbuf.h
 	gcc $(CFLAGS) -std=gnu17 -o server_cbs \
 		main.c server_cbs.c serialize.c \
+		magicbuf.c \
 		-pthread
 
 magicbuf_test: magicbuf.c magicbuf.h
-	gcc $(CFLAGS) -std=gnu17 -DMAGICBUF_TEST -o magicbuf_test magicbuf.c && ./magicbuf_test
+	gcc $(CFLAGS) -std=gnu17 -DMAGICBUF_TEST_MAIN -o magicbuf_test magicbuf.c && ./magicbuf_test
 
-tags:
+tags: *.c *.h
 	ctags *.c *.h
 
 vi:

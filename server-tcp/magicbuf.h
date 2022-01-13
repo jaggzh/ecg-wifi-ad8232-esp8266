@@ -1,3 +1,11 @@
+#ifdef MAGICBUF_TEST_MAIN
+#define MAGICBUF_TEST
+#endif
+// 'Magic' start/end sequences surrounding sensor bundles
+// * array versions are used so sizeof() works directly
+// * string versions are included mostly only for tests
+//   where you might want to concatenate them (see bottom of
+//   magicbuf.c)
 #ifndef MAGICBUF_TEST
 #define MAGIC_ST { 0375, 003, 0374 }  // start packet bundle magic
 #define MAGIC_EN { 0371, 004, 0372 }  // end

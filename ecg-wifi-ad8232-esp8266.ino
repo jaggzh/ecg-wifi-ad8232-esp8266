@@ -57,9 +57,9 @@ unsigned int avg(int *vals, unsigned char cnt) {
 }
 
 void loop () {
-	static int slow=0;
-	static int avv[AVGCNT];
-	static uint8_t avvi=0;
+	//static int slow=0;
+	//static int avv[AVGCNT];
+	//static uint8_t avvi=0;
 	uint32_t cmicros = micros();
 
 	if (cmicros-us_last_sample >= US_SAMPLES) {
@@ -69,10 +69,10 @@ void loop () {
 		} else {
 			int v;
 			v=analogRead(A0);
-			avv[avvi] = v;
-			if (++avvi >= AVGCNT) avvi=0;
-			slow = avg(avv, AVGCNT);
 			#ifdef PLOT_TO_SERIAL
+				//avv[avvi] = v;
+				//if (++avvi >= AVGCNT) avvi=0;
+				//slow = avg(avv, AVGCNT);
 				Serial.print(v);
 				Serial.print('\t');
 				Serial.println(slow);

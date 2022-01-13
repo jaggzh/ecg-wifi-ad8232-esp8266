@@ -1,5 +1,5 @@
-tags: *.cpp *.c *.ino *.h
-	ctags *.cpp *.c *.ino *.h
+tags: *.cpp *.ino *.h
+	ctags *.cpp *.ino *.h
 
 vi:
 	vim \

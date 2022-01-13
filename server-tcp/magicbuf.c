@@ -71,12 +71,12 @@ int _mbuf_mb_free(struct magicbuf *self) {
 	return 0;
 }
 
-#ifdef MAGICBUF_TEST
+#ifdef MAGICBUF_TEST_MAIN
 uint8_t stmag[]=MAGIC_ST;
 uint8_t enmag[]=MAGIC_EN;
 
 int main() {
-	struct magicbuf mbuf_st, *mb=&mbuf_st; // funner to access with ->
+	struct magicbuf mbuf, *mb=&mbuf; // funner to access with ->
 	mbuf_new(mb, stmag, sizeof(stmag), enmag, sizeof(stmag));
 	mb->add(mb, "Hello ", 5);
 	mb->add(mb, MAGIC_ST_STR "World" MAGIC_EN_STR, 5 + sizeof(stmag) + sizeof(enmag));
