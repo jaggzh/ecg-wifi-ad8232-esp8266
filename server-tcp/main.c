@@ -17,12 +17,14 @@
 #include "main.h"
 #include "server_cbs.h"
 #include "serialize.h"
+#include "magicbuf.h"
 
 struct CMDConnData {
     char login;
     char *datafn;
 	FILE *dataf;
 	int sockfd;
+	struct magicbuf mb;
 };
 struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
@@ -36,6 +38,10 @@ struct CMDConnData connst = {
 char ecg_netdata[(4+2)*MAX_PACKETS];
 #define PAKS_LEN sizeof(ecg_netdata)
 int nextpacketi=0;
+
+char stmag[]=MAGIC_ST;
+char stend[]=MAGIC_EN;
+
 
 int main(int argc, char *argv[]) {
 	setup();
@@ -63,8 +69,14 @@ void our_cb_cl_connect(
 		int sockfd,
 		struct sockaddr_in *cli_addr
 		) {
-	connst.sockfd = sockfd;
 	printf("---> CB: Client connected: IP=%s\n", ipstr);
+	connst.sockfd = sockfd;
+	mbuf_new(&connst.mb,
+			stmag,
+			 st_mag_sz,
+			enmag,
+			 en_mag_sz
+			);
 }
 
 void sockprintf(char *fmt, ...) {
@@ -113,7 +125,7 @@ void our_cb_cl_read(                // called on data read
 			printf("Not logged in\n");
 		}
 	} else {
-		process_user_packet(buf, buflen);
+		process_ip_packet(buf, buflen);
 	}
 }
 
@@ -124,18 +136,16 @@ void show_packets(uint8_t *buf, int buflen) {
 		uint16_t val;
 		us = unpacku32(buf+i);
 		val = unpacku32(buf+i+4);
-		printf("us: %d  val: %d\n", us, val);
+		printf("us: %4.4s  val: %2.2s\n", us, val);
 	}
 }
 
 // \/  called for each read after user login
-void process_user_packet(char *buf, int buflen) {
-	printf("Packet size: %d\n", PAK_SIZE);
-	printf("Received %d bytes, expected max %d.\n", buflen, PAKS_LEN);
-	printf("         %d packets, expected max %d.\n",
-			buflen/PAK_SIZE,
-			MAX_PACKETS);
-	show_packets(buf, buflen);
+void process_ip_packet(char *buf, int buflen) {
+	mb->add(mb, buf, buflen)
+	//show_packets(buf, buflen);
+	return;
+	// don't write
 	if (!fwrite(buf, buflen, 1, connst.dataf)) {
 		// \/ separate in case some segfault or something
 		printf("Error writing to data file: "); fflush(stdout);

@@ -37,7 +37,7 @@ char begin_login_session(); // call on successful login
 char end_login_session();
 
 // \/  called for each read after user login
-void process_user_packet(char *buf, int buflen);
+void process_ip_packet(char *buf, int buflen);
 
 char *make_data_fn();       // creates data/log filename in static buf
 void sockprintf(char *fmt, ...);  // prints to sockfd

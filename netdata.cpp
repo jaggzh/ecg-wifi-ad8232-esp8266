@@ -26,6 +26,9 @@ uint8_t ecg_netdata[(4+2)*MAX_PACKETS];
 #define PAKS_LEN sizeof(ecg_netdata)
 int nextpacketi=0;
 
+uint8_t stmag[]=MAGIC_ST;
+uint8_t enmag[]=MAGIC_EN;
+
 void setup_netdata() {
 
 }
@@ -37,8 +40,8 @@ void netdata_add(uint16_t v) { // call to add value to send
 	// void packi32(unsigned char *buf, unsigned long int i)
 	uint32_t us;
 	// us = micros();
-	us = 1111111;
-	uint16_t testval = 2222;
+	us = *((uint32_t *)"ABCD");
+	uint16_t testval = *((uint16_t *)"YZ");
 	packi32(ecg_netdata + (nextpacketi*PAK_SIZE), us);
 	packi16(ecg_netdata + (nextpacketi*PAK_SIZE) + 4, testval);
 	/* Serial.print(" u:"); */
@@ -55,6 +58,8 @@ void netdata_add(uint16_t v) { // call to add value to send
 
 void netdata_send() {
 	//Serial.println("netdata_send()");
+	/* Serial.print("Free heap: "); */
+	/* Serial.println(ESP.getFreeHeap()); */
 	if (!server.connected()) {
 		//Serial.println("Not connected. Losing data");
 	} else {
@@ -63,10 +68,12 @@ void netdata_send() {
 		/* Serial.print("="); */
 		/* Serial.print(sizeof(packets)); */
 		/* Serial.print("b "); */
+		server.write(stmag, sizeof(stmag));
 		server.write(ecg_netdata, sizeof(ecg_netdata));
-		Serial.println("");
+		server.write(enmag, sizeof(enmag));
+		/* Serial.println(""); */
 		Serial.print("Data size: ");
-		Serial.println(sizeof(ecg_netdata));
+		Serial.println(sizeof(ecg_netdata) + sizeof(stmag) + sizeof(enmag));
 		//Serial.println("");
 	}
 }
