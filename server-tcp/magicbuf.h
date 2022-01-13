@@ -1,3 +1,4 @@
+#define MAGICBUF_TEST
 #ifdef MAGICBUF_TEST_MAIN
 #define MAGICBUF_TEST
 #endif
@@ -18,6 +19,9 @@
 #define MAGIC_EN_STR "DYC"   //  in string concatenation
 #endif
 
+#define MAXBUFBYTES 10000000  // if no magic found, limit buffer
+//#define MAXBUFBYTES 2500  // if no magic found, limit buffer
+
 struct magicbuf {
 	uint8_t *b;
 	int32_t nexti;
@@ -25,16 +29,18 @@ struct magicbuf {
 	uint16_t st_mag_sz, en_mag_sz;
 	uint32_t maxlen;
 	uint32_t bsize;
+	uint32_t maxbuf;
 	int (*free)(struct magicbuf *);
 	int (*add)(struct magicbuf *, uint8_t *buf, uint32_t blen);
-	void (*cb_block)(struct magicbuf *, uint8_t *buf, uint32_t blen);
+	void (*cb_block)(uint8_t *buf, uint32_t blen);
 };
 
 int mbuf_new(struct magicbuf *mb,
 		const uint8_t *st_mag,
 		uint16_t st_mag_sz,
 		const uint8_t *en_mag,
-		uint16_t en_mag_sz
+		uint16_t en_mag_sz,
+		void (*cb_block)(uint8_t *buf, uint32_t blen)
 		);
 int _mbuf_mb_add(struct magicbuf *self, uint8_t *buf, uint32_t blen);
 int _mbuf_mb_free(struct magicbuf *self);

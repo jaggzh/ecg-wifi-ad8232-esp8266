@@ -64,6 +64,17 @@ void our_cb_svr_sig(int sig) {
 	printf("---> CB: Server terminating\n");
 }
 
+void our_cb_buf_bundle(uint8_t *buf, uint32_t blen) {
+	uint8_t *e = buf+blen;
+	for (uint8_t *s=buf; s < e;) {
+		uint32_t us;
+		uint16_t val;
+		us = unpacku32(s);   s += 4;
+		val = unpacku16(s);  s += 2;
+		printf("us: %lu  val: %u\n", us, val);
+	}
+}
+
 void our_cb_cl_connect(
 		const char *ipstr,
 		int sockfd,
@@ -73,7 +84,8 @@ void our_cb_cl_connect(
 	connst.sockfd = sockfd;
 	mbuf_new(&connst.mbuf,
 			stmag,  sizeof(stmag),
-			enmag,  sizeof(enmag)
+			enmag,  sizeof(enmag),
+			our_cb_buf_bundle
 			);
 }
 
@@ -127,21 +139,9 @@ void our_cb_cl_read(                // called on data read
 	}
 }
 
-void show_packets(uint8_t *buf, int buflen);
-void show_packets(uint8_t *buf, int buflen) {
-	for (int i=0; i<buflen; i+=PAK_SIZE) {
-		uint32_t us;
-		uint16_t val;
-		us = unpacku32(buf+i);
-		val = unpacku32(buf+i+4);
-		printf("us: %4.4s  val: %2.2s\n", us, val);
-	}
-}
-
 // \/  called for each read after user login
 void process_ip_packet(char *buf, int buflen) {
 	connst.mbuf.add(&connst.mbuf, buf, buflen);
-	//show_packets(buf, buflen);
 	return;
 	// don't write
 	if (!fwrite(buf, buflen, 1, connst.dataf)) {

@@ -63,7 +63,14 @@ void loop () {
 	uint32_t cmicros = micros();
 
 	if (cmicros-us_last_sample >= US_SAMPLES) {
-		us_last_sample -= US_SAMPLES;
+		// Use to keep as fast as possible, but
+		// with a minimum time between sample readings:
+		// us_last_sample -= US_SAMPLES;
+
+		// Use to give an actual delay, regardless of
+		// other overhead:
+		us_last_sample = cmicros;
+
 		if ((digitalRead(10) == 1) || (digitalRead(11) == 1)) {
 			Serial.println('!');
 		} else {
@@ -77,7 +84,7 @@ void loop () {
 				Serial.print('\t');
 				Serial.println(slow);
 			#endif
-			#ifdef SEND_TO_WEBSOCKET
+			#ifdef SEND_TO_NET
 				netdata_add(v);
 			#endif
 			// send the value of analog input 0:

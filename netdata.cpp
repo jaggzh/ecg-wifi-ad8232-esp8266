@@ -21,7 +21,7 @@ unsigned long us_last_nettest=micros();
 
 // Matches client .ino
 #define PAK_SIZE (4+2)
-#define MAX_PACKETS  (400/PAK_SIZE) // fit within ESP's packet (524?)
+#define MAX_PACKETS  (1000/PAK_SIZE) // fit within ESP's packet (524?)
 uint8_t ecg_netdata[(4+2)*MAX_PACKETS];
 #define PAKS_LEN sizeof(ecg_netdata)
 int nextpacketi=0;
@@ -39,11 +39,16 @@ void netdata_add(uint16_t v) { // call to add value to send
 	// void packi16(unsigned char *buf, unsigned int i)
 	// void packi32(unsigned char *buf, unsigned long int i)
 	uint32_t us;
-	// us = micros();
-	us = *((uint32_t *)"abcd");
-	uint16_t testval = *((uint16_t *)"yz");
+	uint16_t testval;
+	//us = micros();
+	us = millis();
+	/* us = *((uint32_t *)"abcd"); */
+	/* v = *((uint16_t *)"yz"); */
+	/* us = 123456; */
+	/* v = 45678; */
+
 	packi32(ecg_netdata + (nextpacketi*PAK_SIZE), us);
-	packi16(ecg_netdata + (nextpacketi*PAK_SIZE) + 4, testval);
+	packi16(ecg_netdata + (nextpacketi*PAK_SIZE) + 4, v);
 	/* Serial.print(" u:"); */
 	/* Serial.print(packets[nextpacketi].us); */
 	/* Serial.print(" v:"); */

@@ -13,7 +13,8 @@ int mbuf_new(struct magicbuf *mb,
 		const uint8_t *st_mag,
 		uint16_t st_mag_sz,
 		const uint8_t *en_mag,
-		uint16_t en_mag_sz
+		uint16_t en_mag_sz,
+		void (*cb_block)(uint8_t *buf, uint32_t blen)
 		) {
 	#if MBUF_INITSIZE < 1
 		#error "MBUF_INITSIZE has to be a positive byte count for now."
@@ -30,11 +31,29 @@ int mbuf_new(struct magicbuf *mb,
 	mb->en_mag_sz=en_mag_sz;
 	mb->free = _mbuf_mb_free;
 	mb->add = _mbuf_mb_add;
-	mb->cb_block = NULL;
+	mb->cb_block = cb_block;
+	mb->maxbuf = MAXBUFBYTES;
 	return 0;
 }
 
 int _mbuf_mb_add(struct magicbuf *self, uint8_t *buf, uint32_t blen) {
+	// If buffer out of room, and we're at the maxbuf size,
+	// shift data (results in loss of data):
+	if (self->nexti + blen > self->maxbuf) {
+		if (blen > self->maxbuf) {
+			printf("ERROR: Dropping too big incoming data (%d > %d maxbuf)",
+					blen, self->maxbuf);
+			return 1; // just ignore it. later maybe we keep the end
+		}
+		printf("ERROR: Buffer's grown too large (%d is maxbuf).\n"
+		       "   For now we're dumping all old data.\n",
+		       self->maxbuf);
+		// TODO: shift by enough for new data
+		// TODO: Must ensure we're using the current buffer size,
+		//       (ie. not assuming there's room for blen data)
+		// memmove(self->b, self->b + blen, self->nexti - blen);
+		self->nexti = 0; // reset End of Data position
+	}
 	if (blen + self->nexti > self->bsize) {
 		self->bsize = blen + self->nexti;
 		self->b = realloc(self->b, self->bsize);
@@ -47,6 +66,9 @@ int _mbuf_mb_add(struct magicbuf *self, uint8_t *buf, uint32_t blen) {
 	self->nexti += blen;
 	uint8_t *s, *e;
 	// look for start magic in entire buffer [0 .. nexti]
+	/* printf("Buffer now looks like:\n{{"); */
+	/* fwrite(self->b, self->nexti, 1, stdout); */
+	/* printf("}}\n"); */
 	s=memmem(self->b, self->nexti, self->st_mag, self->st_mag_sz);
 	if (s) {        // look for end magic [s .. nexti] = [s ..  nexti-(s-b)]
 		s += self->st_mag_sz;
@@ -56,9 +78,12 @@ int _mbuf_mb_add(struct magicbuf *self, uint8_t *buf, uint32_t blen) {
 		if (e) {    // end found
 			printf("Found a block! %d bytes.\n{{", e-s);
 			fwrite(s, e-s, 1, stdout);
-			e += self->en_mag_sz;
 			printf("}}\n");
+			if (self->cb_block) {
+				(*(self->cb_block))(s, e-s);
+			}
 			// Block handled. Relocate remaining to the start of the buffer
+			e += self->en_mag_sz;
 			self->nexti -= (e - self->b);
 			memmove(self->b, e, self->nexti);
 		}
