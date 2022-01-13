@@ -16,6 +16,7 @@
 #include "settings.h" // copy from setting-example.h
 #include "main.h"
 #include "server_cbs.h"
+#include "serialize.h"
 
 struct CMDConnData {
     char login;
@@ -33,12 +34,13 @@ struct CMDConnData connst = {
 #define PAK_SIZE (4+2)
 #define MAX_PACKETS  (400/PAK_SIZE) // fit within ESP's packet (524?)
 char ecg_netdata[(4+2)*MAX_PACKETS];
+#define PAKS_LEN sizeof(ecg_netdata)
 int nextpacketi=0;
 
 int main(int argc, char *argv[]) {
 	setup();
 	svr_start(PORT); // doesn't end until dead
-	return 0;        // probably never returns
+	return 0;        // probably never gets here
 }
 
 void setup() {
@@ -111,17 +113,29 @@ void our_cb_cl_read(                // called on data read
 			printf("Not logged in\n");
 		}
 	} else {
-		process_user_data(buf, buflen);
+		process_user_packet(buf, buflen);
+	}
+}
+
+void show_packets(uint8_t *buf, int buflen);
+void show_packets(uint8_t *buf, int buflen) {
+	for (int i=0; i<buflen; i+=PAK_SIZE) {
+		uint32_t us;
+		uint16_t val;
+		us = unpacku32(buf+i);
+		val = unpacku32(buf+i+4);
+		printf("us: %d  val: %d\n", us, val);
 	}
 }
 
 // \/  called for each read after user login
-void process_user_data(char *buf, int buflen) {
-	printf("Struct size: %d\n", sizeof(struct ecg_packet));
-	printf("Received %d bytes, expected max %d.\n", buflen, MAX_PACKETS_LEN);
+void process_user_packet(char *buf, int buflen) {
+	printf("Packet size: %d\n", PAK_SIZE);
+	printf("Received %d bytes, expected max %d.\n", buflen, PAKS_LEN);
 	printf("         %d packets, expected max %d.\n",
-			buflen/sizeof(struct ecg_packet),
+			buflen/PAK_SIZE,
 			MAX_PACKETS);
+	show_packets(buf, buflen);
 	if (!fwrite(buf, buflen, 1, connst.dataf)) {
 		// \/ separate in case some segfault or something
 		printf("Error writing to data file: "); fflush(stdout);

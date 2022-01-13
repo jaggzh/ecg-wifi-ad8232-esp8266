@@ -6,8 +6,11 @@ all: server_cbs
 clean:
 	rm server_cbs
 
-server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h
-	gcc $(CFLAGS) -std=gnu17 -o server_cbs main.c server_cbs.c -pthread
+server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h \
+		serialize.c serialize.h
+	gcc $(CFLAGS) -std=gnu17 -o server_cbs \
+		main.c server_cbs.c serialize.c \
+		-pthread
 
 tags:
 	ctags *.c *.h
