@@ -6,6 +6,8 @@
 #include <stdio.h>
 
 #include "magicbuf.h"
+#define NETDATA_SETTINGS_MAIN
+#include "../netdata-settings.h"
 
 #define MBUF_INITSIZE 32
 
@@ -76,9 +78,9 @@ int _mbuf_mb_add(struct magicbuf *self, uint8_t *buf, uint32_t blen) {
 				self->nexti - (s-self->b) - self->st_mag_sz,
 				self->en_mag, self->en_mag_sz);
 		if (e) {    // end found
-			printf("Found a block! %d bytes.\n{{", e-s);
-			fwrite(s, e-s, 1, stdout);
-			printf("}}\n");
+			/* printf("Found a block! %d bytes.\n{{", e-s); */
+			/* fwrite(s, e-s, 1, stdout); */
+			/* printf("}}\n"); */
 			if (self->cb_block) {
 				(*(self->cb_block))(s, e-s);
 			}
@@ -97,9 +99,6 @@ int _mbuf_mb_free(struct magicbuf *self) {
 }
 
 #ifdef MAGICBUF_TEST_MAIN
-uint8_t stmag[]=MAGIC_ST;
-uint8_t enmag[]=MAGIC_EN;
-
 int main() {
 	struct magicbuf mbuf, *mb=&mbuf; // funner to access with ->
 	mbuf_new(mb, stmag, sizeof(stmag), enmag, sizeof(stmag));

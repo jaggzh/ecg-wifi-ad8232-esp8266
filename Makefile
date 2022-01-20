@@ -7,6 +7,7 @@ vi:
 		ecg-wifi-ad8232-esp8266.ino \
 		netdata.cpp \
 		netdata.h \
+		netdata-settings.h \
 		serialize.cpp \
 		serialize.h \
 		bak/websocket.cpp \

@@ -30,6 +30,7 @@ vi:
 		main.h \
 		magicbuf.c \
 		magicbuf.h \
+		../netdata-settings.h \
 		serialize.c \
 		serialize.h \
 		../server-websockets/server.cc \

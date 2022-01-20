@@ -80,9 +80,9 @@ void loop () {
 				//avv[avvi] = v;
 				//if (++avvi >= AVGCNT) avvi=0;
 				//slow = avg(avv, AVGCNT);
-				Serial.print(v);
-				Serial.print('\t');
-				Serial.println(slow);
+				Serial.println(v);
+				/* Serial.print('\t'); */
+				/* Serial.println(slow); */
 			#endif
 			#ifdef SEND_TO_NET
 				netdata_add(v);

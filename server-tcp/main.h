@@ -29,8 +29,11 @@ void our_cb_cl_disconnect(
 		struct sockaddr_in *cli_addr,
 		int readval
 		);
-// Final processor of a received bundle of data:
+// \/ Final processor of a received bundle of data:
 void our_cb_buf_bundle(uint8_t *buf, uint32_t blen);
+// \/ Called by our_cb_buf_bundle() when data type packet received
+void handle_bundle_data(uint8_t *buf, uint32_t blen);
+void handle_bundle_btn(uint8_t *buf, uint32_t blen);
 
 // Other local routines
 

@@ -18,6 +18,7 @@
 #include "server_cbs.h"
 #include "serialize.h"
 #include "magicbuf.h"
+#include "../netdata-settings.h"
 
 struct CMDConnData {
     char login;
@@ -29,19 +30,6 @@ struct CMDConnData {
 struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
 };
-
-//struct ecg_packet pack_o_packets[MAX_PACKETS+1];
-
-// Matches client .ino
-#define PAK_SIZE (4+2)
-#define MAX_PACKETS  (400/PAK_SIZE) // fit within ESP's packet (524?)
-char ecg_netdata[(4+2)*MAX_PACKETS];
-#define PAKS_LEN sizeof(ecg_netdata)
-int nextpacketi=0;
-
-char stmag[]=MAGIC_ST;
-char enmag[]=MAGIC_EN;
-
 
 int main(int argc, char *argv[]) {
 	setup();
@@ -65,14 +53,47 @@ void our_cb_svr_sig(int sig) {
 }
 
 void our_cb_buf_bundle(uint8_t *buf, uint32_t blen) {
+	// Receives buffer.
+	// FIRST BYTE IS OUR TYPE FLAG:
+	//   #define PAKTYPE_SIZE 1
+	//   #define PAKTYPE_TYPE uint8_t
+	//   // packet/bundle types:
+	//   #define PAK_T_DATA 1
+	//   #define PAK_T_BTN  2
+	PAKTYPE_TYPE paktype = *buf;
+	buf += PAKTYPE_SIZE;   // offset to actual data
+	blen -= PAKTYPE_SIZE;  // ^
+	if (paktype == PAK_T_DATA) {
+		handle_bundle_data(buf, blen);
+	} else if (paktype == PAK_T_BTN) {
+		handle_bundle_btn(buf, blen);
+	}
+}
+	
+void handle_bundle_btn(uint8_t *buf, uint32_t blen) {
+	printf("BUTTON Packet Received\n");
+}
+
+void handle_bundle_data(uint8_t *buf, uint32_t blen) {
 	uint8_t *e = buf+blen;
-	for (uint8_t *s=buf; s < e;) {
+	uint8_t *s;
+	int i;
+	for (i=0, s=buf; s < e; i++) {
 		uint32_t us;
 		uint16_t val;
 		us = unpacku32(s);   s += 4;
 		val = unpacku16(s);  s += 2;
-		printf("us: %lu  val: %u\n", us, val);
+		//printf("us: %lu  val: %u\n", us, val);
+		fprintf(connst.dataf, "%lu %u\n", us, val);
 	}
+	printf("Wrote %d samples\n", i);
+	/* if (!fwrite(buf, blen, 1, connst.dataf)) { */
+	/* 	// \/ separate in case some segfault or something */
+	/* 	printf("Error writing to data file: "); fflush(stdout); */
+	/* 	printf("%s\n", connst.datafn); */
+	/* } else { */
+	/* 	fflush(connst.dataf); */
+	/* } */
 }
 
 void our_cb_cl_connect(
@@ -83,8 +104,8 @@ void our_cb_cl_connect(
 	printf("---> CB: Client connected: IP=%s\n", ipstr);
 	connst.sockfd = sockfd;
 	mbuf_new(&connst.mbuf,
-			stmag,  sizeof(stmag),
-			enmag,  sizeof(enmag),
+			stmag,  MAGIC_SIZE,
+			enmag,  MAGIC_SIZE,
 			our_cb_buf_bundle
 			);
 }
@@ -143,14 +164,6 @@ void our_cb_cl_read(                // called on data read
 void process_ip_packet(char *buf, int buflen) {
 	connst.mbuf.add(&connst.mbuf, buf, buflen);
 	return;
-	// don't write
-	if (!fwrite(buf, buflen, 1, connst.dataf)) {
-		// \/ separate in case some segfault or something
-		printf("Error writing to data file: "); fflush(stdout);
-		printf("%s\n", connst.datafn);
-	} else {
-		fflush(connst.dataf);
-	}
 }
 
 void our_cb_cl_disconnect(                // called on data read

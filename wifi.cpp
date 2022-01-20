@@ -57,8 +57,13 @@ uint16_t loop_check_wifi() {
 			}
 		} else {
 			if (!connected) {
-				spl(F("Still not connected"));
+				#ifndef PLOT_TO_SERIAL
+					spl(F("Still not connected"));
+				#endif
 				if (cur_millis - last_connect_millis > MAX_MS_BEFORE_RECONNECT) {
+					#ifndef PLOT_TO_SERIAL
+						spl(F("  Reconnecting"));
+					#endif
 					WiFi.reconnect();
 				}
 			} else { // only if we toggled state
