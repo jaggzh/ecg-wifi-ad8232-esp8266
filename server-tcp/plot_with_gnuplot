@@ -1,0 +1,22 @@
+#!/bin/bash
+logdir=/tmp/tcpserver_data
+
+logf=$(cd "$logdir" && ls -t | head -2 | tail -1)
+logf="$logdir/$logf"
+echo "Logfile: $logf"
+
+tmpf=$(mktemp)
+cat <<-EOT >"$tmpf"
+	set xdata time
+	set format x '%d.%m.%Y %H:%M:%S'
+	plot '$logf' using (\$1):2 with lines ls 1 lw 3
+	#pause keypress
+	pause mouse key
+	print "Hit tab to done"
+	while (MOUSE_KEY != 9) {
+		pause mouse key
+	}
+	print "Done"
+	EOT
+
+gnuplot "$tmpf"

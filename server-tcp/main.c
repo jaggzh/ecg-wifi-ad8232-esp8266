@@ -16,12 +16,16 @@
 #include "settings.h" // copy from setting-example.h
 #include "main.h"
 #include "server_cbs.h"
+#include "serialize.h"
+#include "magicbuf.h"
+#include "../netdata-settings.h"
 
 struct CMDConnData {
     char login;
     char *datafn;
 	FILE *dataf;
 	int sockfd;
+	struct magicbuf mbuf;
 };
 struct CMDConnData connst = {
 	.login=0, .datafn=NULL, .dataf=NULL, .sockfd=-1
@@ -30,7 +34,7 @@ struct CMDConnData connst = {
 int main(int argc, char *argv[]) {
 	setup();
 	svr_start(PORT); // doesn't end until dead
-	return 0;        // probably never returns
+	return 0;        // probably never gets here
 }
 
 void setup() {
@@ -48,13 +52,62 @@ void our_cb_svr_sig(int sig) {
 	printf("---> CB: Server terminating\n");
 }
 
+void our_cb_buf_bundle(uint8_t *buf, uint32_t blen) {
+	// Receives buffer.
+	// FIRST BYTE IS OUR TYPE FLAG:
+	//   #define PAKTYPE_SIZE 1
+	//   #define PAKTYPE_TYPE uint8_t
+	//   // packet/bundle types:
+	//   #define PAK_T_DATA 1
+	//   #define PAK_T_BTN  2
+	PAKTYPE_TYPE paktype = *buf;
+	buf += PAKTYPE_SIZE;   // offset to actual data
+	blen -= PAKTYPE_SIZE;  // ^
+	if (paktype == PAK_T_DATA) {
+		handle_bundle_data(buf, blen);
+	} else if (paktype == PAK_T_BTN) {
+		handle_bundle_btn(buf, blen);
+	}
+}
+	
+void handle_bundle_btn(uint8_t *buf, uint32_t blen) {
+	printf("BUTTON Packet Received\n");
+}
+
+void handle_bundle_data(uint8_t *buf, uint32_t blen) {
+	uint8_t *e = buf+blen;
+	uint8_t *s;
+	int i;
+	for (i=0, s=buf; s < e; i++) {
+		uint32_t us;
+		uint16_t val;
+		us = unpacku32(s);   s += 4;
+		val = unpacku16(s);  s += 2;
+		//printf("us: %lu  val: %u\n", us, val);
+		fprintf(connst.dataf, "%lu %u\n", us, val);
+	}
+	printf("Wrote %d samples\n", i);
+	/* if (!fwrite(buf, blen, 1, connst.dataf)) { */
+	/* 	// \/ separate in case some segfault or something */
+	/* 	printf("Error writing to data file: "); fflush(stdout); */
+	/* 	printf("%s\n", connst.datafn); */
+	/* } else { */
+	/* 	fflush(connst.dataf); */
+	/* } */
+}
+
 void our_cb_cl_connect(
 		const char *ipstr,
 		int sockfd,
 		struct sockaddr_in *cli_addr
 		) {
-	connst.sockfd = sockfd;
 	printf("---> CB: Client connected: IP=%s\n", ipstr);
+	connst.sockfd = sockfd;
+	mbuf_new(&connst.mbuf,
+			stmag,  MAGIC_SIZE,
+			enmag,  MAGIC_SIZE,
+			our_cb_buf_bundle
+			);
 }
 
 void sockprintf(char *fmt, ...) {
@@ -100,22 +153,17 @@ void our_cb_cl_read(                // called on data read
 		} else {                                      // success
 			char s_loginfail[]="Not logged in\n";
 			write(sockfd, s_loginfail, sizeof(s_loginfail)-1);
-			printf("Login failure\n");
+			printf("Not logged in\n");
 		}
 	} else {
-		process_user_data(buf, buflen);
+		process_ip_packet(buf, buflen);
 	}
 }
 
 // \/  called for each read after user login
-void process_user_data(char *buf, int buflen) {
-	if (!fwrite(buf, buflen, 1, connst.dataf)) {
-		// \/ separate in case some segfault or something
-		printf("Error writing to data file: "); fflush(stdout);
-		printf("%s\n", connst.datafn);
-	} else {
-		fflush(connst.dataf);
-	}
+void process_ip_packet(char *buf, int buflen) {
+	connst.mbuf.add(&connst.mbuf, buf, buflen);
+	return;
 }
 
 void our_cb_cl_disconnect(                // called on data read

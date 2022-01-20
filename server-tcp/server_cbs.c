@@ -212,7 +212,7 @@ void _svr_client_handler(int sock, struct sockaddr_in *cli_addr) {
 			exit(0);
 		}
 		
-		printf("Received from %s: %d bytes: {%*s}\n",
+		printf("Received from %s: %d bytes: {%*s}\r\n",
 			ipstr, n, n, buffer);
 
 		if (cb_svr_cl_read) {

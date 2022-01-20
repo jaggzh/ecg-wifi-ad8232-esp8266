@@ -19,10 +19,11 @@ void setup_wifi(void) {
 	WiFi.persistent(true);       // reconnect to prior access point
 }
 
+// Optional call to use if trying to requiring wifi during setup()
 // Wait max of passed seconds for wifi
 // Returns flags immediately upon success (eg. WIFI_FLAG_CONNECTED)
 // Return flags of 0 means NOT connected for timeout period
-uint16_t setup_wait_wifi(int timeout_s) {
+uint16_t setup_wait_wifi(unsigned int timeout_s) {
 	int mil = millis();
 	bool ret;
 	while (((millis() - mil)/1000) < timeout_s) {
@@ -38,7 +39,9 @@ uint16_t loop_check_wifi() {
 	int cur_millis = millis();
 	static int last_wifi_millis = cur_millis;
 	static int last_connect_millis = 0;
-	if (cur_millis - last_wifi_millis > 1000) {
+	if (cur_millis - last_wifi_millis < 1000) {
+		return WIFI_FLAG_IGNORE;
+	} else {
 		last_wifi_millis = cur_millis;
 		if (WiFi.status() == WL_CONNECTED) {
 			if (!connected) { // only if we toggled state
@@ -54,8 +57,13 @@ uint16_t loop_check_wifi() {
 			}
 		} else {
 			if (!connected) {
-				spl(F("Still not connected"));
+				#ifndef PLOT_TO_SERIAL
+					spl(F("Still not connected"));
+				#endif
 				if (cur_millis - last_connect_millis > MAX_MS_BEFORE_RECONNECT) {
+					#ifndef PLOT_TO_SERIAL
+						spl(F("  Reconnecting"));
+					#endif
 					WiFi.reconnect();
 				}
 			} else { // only if we toggled state

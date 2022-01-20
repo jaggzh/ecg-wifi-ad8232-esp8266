@@ -14,3 +14,10 @@ presently coded to use pin mapping (Board - NodeMCU(ESP8266)):
 
 ![Wiring diagram](img/wiring.jpg)
 
+## Usage
+
+1. Copy and edit wifi\_config--example.h to wifi\_config.h
+1. In server-tcp/, copy settings-example.h to settings.h
+
+
+
