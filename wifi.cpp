@@ -39,7 +39,7 @@ uint16_t loop_check_wifi() {
 	int cur_millis = millis();
 	static int last_wifi_millis = cur_millis;
 	static int last_connect_millis = 0;
-	if (cur_millis - last_wifi_millis < 1000) {
+	if (cur_millis - last_wifi_millis < 2000) {
 		return WIFI_FLAG_IGNORE;
 	} else {
 		last_wifi_millis = cur_millis;
@@ -58,7 +58,7 @@ uint16_t loop_check_wifi() {
 		} else {
 			if (!connected) {
 				#ifndef PLOT_TO_SERIAL
-					spl(F("Still not connected"));
+					spl(F("Not connected to wifi"));
 				#endif
 				if (cur_millis - last_connect_millis > MAX_MS_BEFORE_RECONNECT) {
 					#ifndef PLOT_TO_SERIAL
