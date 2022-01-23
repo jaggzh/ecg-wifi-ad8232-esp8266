@@ -6,7 +6,7 @@ all: server_cbs
 tests: magicbuf_test
 
 clean:
-	rm server_cbs magicbuf_test
+	rm -f server_cbs magicbuf_test
 
 server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h \
 		serialize.c serialize.h magicbuf.c magicbuf.h

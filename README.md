@@ -8,9 +8,12 @@ presently coded to use pin mapping (Board - NodeMCU(ESP8266)):
 1. GND - GND
 1. 3.3v - 3.3v
 1. Output - A0
-1. LO- - D4
+1. LO- - D2
 1. LO+ - D5
-1. SDN - Not Connected
+1. SDN - D7
+
+1. External LED - D1
+1. Button       - D6
 
 ![Wiring diagram](img/wiring.jpg)
 

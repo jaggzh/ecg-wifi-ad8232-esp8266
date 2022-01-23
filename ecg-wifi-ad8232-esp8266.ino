@@ -91,9 +91,9 @@ void btn1_down() {
 	/* led1_toggle(); */
 }
 void btn1_up() {
-	/* sp("/BUTTON1 was down for "); */
-	/* sp(micros()-btn1time); */
-	/* spl(" seconds"); */
+	sp("/BUTTON1 was down for ");
+	sp(micros()-btn1time);
+	spl(" seconds");
 	led1_off();
 }
 
@@ -104,40 +104,46 @@ ICACHE_RAM_ATTR void int_hand_btn1_change() {
 void loop_button() {
 	int cmillis = millis();
 	static int last_loop_button_ms = cmillis;
-	if (cmillis - last_loop_button_ms < 50) { // slow down testing
+	if (cmillis - last_loop_button_ms < 20) { // slow down testing
 		return;
 	} else {
 		last_loop_button_ms = cmillis;
+		int_btn1_trigged = digitalRead(PIN_BTN1) ? false : true;
 	}
+	/* sp("BTN1: "); */
 	/* spl(int_btn1_trigged); */
 	// We're using HW debounce, but software debounce is handled
 	// below for those who don't include the HW debounce components:
-
-	if (int_btn1_trigged) {                 // button pressed
-		if (btn1state == BTN_MODE_NORMAL) { // first hit, must debounce
+	if (btn1state == BTN_MODE_NORMAL) {
+		if (int_btn1_trigged) {             // button pressed
 			btn1state = BTN_MODE_DEBOUNCE;
 			btn1time = cmillis;
-		} else if (btn1state == BTN_MODE_DEBOUNCE) {
-			if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+		}
+	} else if (btn1state == BTN_MODE_DEBOUNCE) {
+		if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+			if (int_btn1_trigged) {         // button still pressed
 				btn1_down();
 				btn1state = BTN_MODE_DOWN;
+			} else {                         // it was noise or something
+				btn1state = BTN_MODE_NORMAL; // don't consider it a press
 			}
 		}
-	} else {
-		if (btn1state == BTN_MODE_DEBOUNCE) {
-			if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
-				// it's not a bounce
-				btn1state = BTN_MODE_NORMAL;
-			} else {
-				/* spl(" Bounce!"); */
-			}
-		} else if (btn1state == BTN_MODE_DOWN) {
+	} else if (btn1state == BTN_MODE_DOWN) {
+		// we only get here if the down-press was debounced
+		if (int_btn1_trigged) {         // button still pressed
+		} else {                        // no longer pressed, so debounce lift
 			btn1state = BTN_MODE_UP_DEBOUNCE;
 			btn1time = cmillis;
-		} else if (btn1state == BTN_MODE_UP_DEBOUNCE) {
-			if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+		}
+	} else if (btn1state == BTN_MODE_UP_DEBOUNCE) {
+		if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+			if (!int_btn1_trigged) { // button stayed up, so button_up
 				btn1_up();
 				btn1state = BTN_MODE_NORMAL;
+			} else {
+				// after this time, the button is back down, so go
+				// back to the down mode
+				btn1state = BTN_MODE_DOWN;
 			}
 		}
 	}
