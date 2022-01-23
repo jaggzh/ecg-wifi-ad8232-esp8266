@@ -9,11 +9,11 @@
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
 uint8_t baudi=5; // start at this baud
-uint32_t us_last_sample=micros();
+unsigned long us_last_sample=micros();
 int netdata_pause=0;
 
 uint8_t btn1state = BTN_MODE_NORMAL;
-int btn1time = 0;
+unsigned long btn1time = 0;
 volatile bool int_btn1_trigged = false;
 bool led1_state = false;
 
@@ -102,8 +102,8 @@ ICACHE_RAM_ATTR void int_hand_btn1_change() {
 }
 
 void loop_button() {
-	int cmillis = millis();
-	static int last_loop_button_ms = cmillis;
+	unsigned long cmillis = millis();
+	static unsigned long last_loop_button_ms = cmillis;
 	if (cmillis - last_loop_button_ms < 20) { // slow down testing
 		return;
 	} else {

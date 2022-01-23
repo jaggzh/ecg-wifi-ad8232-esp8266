@@ -24,7 +24,7 @@ void setup_wifi(void) {
 // Returns flags immediately upon success (eg. WIFI_FLAG_CONNECTED)
 // Return flags of 0 means NOT connected for timeout period
 uint16_t setup_wait_wifi(unsigned int timeout_s) {
-	int mil = millis();
+	unsigned long mil = millis();
 	bool ret;
 	while (((millis() - mil)/1000) < timeout_s) {
 		ret = loop_check_wifi(); // after 3s this fn will start printing to serial
@@ -36,9 +36,9 @@ uint16_t setup_wait_wifi(unsigned int timeout_s) {
 
 uint16_t loop_check_wifi() {
 	static int connected=false;
-	int cur_millis = millis();
-	static int last_wifi_millis = cur_millis;
-	static int last_connect_millis = 0;
+	unsigned long cur_millis = millis();
+	static unsigned long last_wifi_millis = cur_millis;
+	static unsigned long last_connect_millis = 0;
 	if (cur_millis - last_wifi_millis < 2000) {
 		return WIFI_FLAG_IGNORE;
 	} else {
