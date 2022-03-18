@@ -16,6 +16,7 @@ presently coded to use pin mapping (Board - NodeMCU(ESP8266)):
 1. Button       - D6
 
 ![Wiring diagram](img/wiring.jpg)
+![Electrode placement](img/electrode-placement.jpg)
 
 ## Usage
 
