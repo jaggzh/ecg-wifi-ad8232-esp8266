@@ -5,18 +5,59 @@
 #define WIFI_CONFIG_GET_IPS
 #define __WIFI_CPP
 #include "wifi_config.h"
+#define _IN_WIFI_CPP
 #include "wifi.h"
 #include "printutils.h"
+
+uint16_t wifi_connflags = 0;
+
+WiFiEventHandler wifiConnectHandler;
+WiFiEventHandler wifiDisconnectHandler;
+WiFiEventHandler wifiGotIPHandler;
+
+void loop_wifi(void) {
+	/* long rssi = WiFi.RSSI(); */
+	/* unsigned long cur_millis = millis(); */
+	/* static unsigned long last_wifi_strength = cur_millis; */
+	/* if (cur_millis - last_wifi_strength > 500) { */
+	/* 	last_wifi_strength = cur_millis; */
+	/* 	Serial.print("WiFi strength: "); */
+	/* 	Serial.println(rssi); */
+	/* } */
+}
 
 void setup_wifi(void) {
 	WiFi.mode(WIFI_STA);
 	WiFi.config(ip, gw, nm);
+	WiFi.setOutputPower(20.5); // 0 - 25 (multiples of .25)
+	sp(F("Connecting to wife (WiFi.begin())..."));
 	WiFi.begin(ssid, password);
-	//sp(F("Connecting to wife..."));
+	wifiConnectHandler = WiFi.onStationModeConnected(onWifiConnect);
+	wifiGotIPHandler = WiFi.onStationModeGotIP(onWifiGotIP);
+	wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
+
 	/* while (WiFi.waitForConnectResult() != WL_CONNECTED) */
 	/* 	{ spl(F("Conn. fail! Rebooting...")); delay(5000); ESP.restart(); } */
 	WiFi.setAutoReconnect(true);
 	WiFi.persistent(true);       // reconnect to prior access point
+}
+
+void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
+	Serial.println(F("EVENT: Disconnected from Wi-Fi, trying to connect..."));
+	/* WiFi.disconnect(); */
+	/* WiFi.begin(ssid, password); */
+	wifi_connflags = 0;
+}
+
+void onWifiConnect(const WiFiEventStationModeConnected& event) {
+	Serial.println(F("EVENT: Connected to Wi-Fi sucessfully."));
+}
+
+void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
+	Serial.println(F("EVENT: IP established sucessfully."));
+	Serial.print(F("IP address: "));
+	Serial.println(WiFi.localIP());
+	wifi_connflags = WIFI_FLAG_CONNECTED;
 }
 
 // Optional call to use if trying to requiring wifi during setup()
@@ -39,6 +80,7 @@ uint16_t loop_check_wifi() {
 	unsigned long cur_millis = millis();
 	static unsigned long last_wifi_millis = cur_millis;
 	static unsigned long last_connect_millis = 0;
+	static unsigned long last_reconnect_millis = 0;
 	if (cur_millis - last_wifi_millis < 2000) {
 		return WIFI_FLAG_IGNORE;
 	} else {
@@ -49,8 +91,10 @@ uint16_t loop_check_wifi() {
 				last_connect_millis = cur_millis;
 				sp(F("Just connected to "));
 				sp(ssid);
-				sp(". IP: ");
+				sp(F(". IP: "));
 				spl(WiFi.localIP());
+				WiFi.setAutoReconnect(true);
+				WiFi.persistent(true);       // reconnect to prior access point
 				return (WIFI_FLAG_CONNECTED | WIFI_FLAG_RECONNECTED);
 			} else {
 				return WIFI_FLAG_CONNECTED;
@@ -58,13 +102,17 @@ uint16_t loop_check_wifi() {
 		} else {
 			if (!connected) {
 				#ifndef PLOT_TO_SERIAL
-					spl(F("Not connected to wifi"));
+					sp(F("Not connected to wifi. millis="));
+					sp(cur_millis);
+					sp(F(", cur-last="));
+					spl(cur_millis - last_wifi_millis);
 				#endif
-				if (cur_millis - last_connect_millis > MAX_MS_BEFORE_RECONNECT) {
+				if (cur_millis - last_reconnect_millis > MAX_MS_BEFORE_RECONNECT) {
 					#ifndef PLOT_TO_SERIAL
-						spl(F("  Reconnecting"));
+						spl(F("  Not connected to WiFi. Reconnecting (disabled)"));
 					#endif
-					WiFi.reconnect();
+					last_reconnect_millis = cur_millis;
+					// WiFi.reconnect();
 				}
 			} else { // only if we toggled state
 				connected=false;
@@ -75,7 +123,3 @@ uint16_t loop_check_wifi() {
 	return 0; // not connected
 }
 
-void onConnectionEstablished() {
-		//Serial.println(payload);});
-	//client.publish("mytopic/test", "This is a message");
-}

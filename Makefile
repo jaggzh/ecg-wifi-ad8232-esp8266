@@ -10,8 +10,6 @@ vi:
 		netdata-settings.h \
 		serialize.cpp \
 		serialize.h \
-		bak/websocket.cpp \
-		bak/websocket.h \
 		README.md \
 		wifi.cpp \
 		wifi.h \

@@ -23,7 +23,7 @@
 
 // Slow down how often we test for TCP
 // (and the reconnections)
-#define US_NETDATA_TEST 100000
+#define US_NETDATA_TEST 2000000
 #define NET_MAXLEN   1000   // Ideally, the max packet size before your
                             //  MCU will fail on them
 

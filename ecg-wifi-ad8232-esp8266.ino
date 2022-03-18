@@ -8,7 +8,7 @@
 
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
-uint8_t baudi=5; // start at this baud
+uint8_t baudi=5; // start at this baud (5 => 115200)
 unsigned long us_last_sample=micros();
 int netdata_pause=0;
 
@@ -149,6 +149,26 @@ void loop_button() {
 	}
 }
 
+void loop_serial() {
+	unsigned long cur_millis = millis();
+	static unsigned long last_ser_ms = cur_millis;
+	if (last_ser_ms - cur_millis > 100) {
+		last_ser_ms = cur_millis;
+		if (Serial.available() > 0) {
+			int ichar;
+			ichar = Serial.read();
+			switch (ichar) {
+				case '+': baudnext(); break;
+				case '-': baudprior(); break;
+				case 'p': netdata_pause = !netdata_pause; break;
+				default:
+					spl("Help: -/+ change baud. (p)ause data.");
+					break;
+			}
+		}
+	}
+}
+
 void loop () {
 	//static int slow=0;
 	//static int avv[AVGCNT];
@@ -164,8 +184,8 @@ void loop () {
 		// other overhead:
 		us_last_sample = cmicros;
 
-		if ((digitalRead(10) == 1) || (digitalRead(11) == 1)) {
-			Serial.println('!');
+		if ((digitalRead(PIN_LO_PLUS) == 1) || (digitalRead(PIN_LO_MINUS) == 1)) {
+			/* Serial.println('!');  // lots of output if no sensor leads */
 		} else {
 			int v;
 			v=analogRead(PIN_OUTPUT);
@@ -178,34 +198,23 @@ void loop () {
 				/* Serial.println(slow); */
 			#endif
 			#ifdef SEND_TO_NET
-				netdata_add(v);
+				//netdata_add(v);
 			#endif
 			// send the value of analog input 0:
 		}
 	}
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
-	if (Serial.available() > 0) {
-		int ichar;
-		ichar = Serial.read();
-		switch (ichar) {
-			case '+': baudnext(); break;
-			case '-': baudprior(); break;
-			case 'p': netdata_pause = !netdata_pause; break;
-			default:
-				spl("Help: -/+ change baud. (p)ause data.");
-				break;
-		}
-	}
+	loop_serial();
 	loop_ota();
-	uint16_t connflags;
-	connflags = loop_check_wifi();
-	/* if (connflags & WIFI_FLAG_IGNORE) {} */
+	loop_wifi();
+	//wifi_connflags = loop_check_wifi();
+	/* if (wifi_connflags & WIFI_FLAG_IGNORE) {} */
 	/* else { */
-	/* 	if ((connflags & WIFI_FLAG_CONNECTED)) ws_net_connect(); */
+	/* 	if ((wifi_connflags & WIFI_FLAG_CONNECTED)) ws_net_connect(); */
 	/* 	else                                   ws_net_disconnected(); */
 	/* } */
-	if (connflags & WIFI_FLAG_CONNECTED) {
+	if (wifi_connflags & WIFI_FLAG_CONNECTED) {
 		if (!netdata_pause) loop_netdata();
 	}
 	loop_button();

@@ -1,6 +1,17 @@
+#include <Arduino.h>
+#include <ESP8266WiFi.h>
+
 #define WIFI_FLAG_CONNECTED   0x01
 #define WIFI_FLAG_RECONNECTED 0x02
 #define WIFI_FLAG_IGNORE      0x04
+
+#ifndef _IN_WIFI_CPP
+extern uint16_t wifi_connflags;
+#endif
+
+void onWifiDisconnect(const WiFiEventStationModeDisconnected& event);
+void onWifiConnect(const WiFiEventStationModeConnected& event);
+void onWifiGotIP(const WiFiEventStationModeGotIP& event);
 
 void setup_wifi(void);
 

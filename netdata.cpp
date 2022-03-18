@@ -102,9 +102,9 @@ void netdata_send() {
 }
 
 void loop_netdata() {
-	unsigned long us_cur=micros();
+	unsigned long us_cur = micros();
 	if (us_cur - us_last_nettest > US_NETDATA_TEST) {
-		us_last_nettest -= US_NETDATA_TEST;
+		us_last_nettest = us_cur;
 		if (!server.connected()) {
 			Serial.println("TCP Connecting...");
 			if (server.connect(DATA_HOST, DATA_PORT)) {

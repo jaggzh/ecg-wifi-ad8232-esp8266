@@ -10,8 +10,10 @@
 #define WEBUPDATE_USER "webuser"
 #define WEBUPDATE_PW   "webpw"
 
-#define MAX_MS_BEFORE_RECONNECT 15000
+#define MAX_MS_BEFORE_RECONNECT 4500
 
+// Server to connect to for logging
+// (this is not our MCU IP. That's below.)
 #define DATA_HOST       "192.168.1.4"
 #define DATA_ARDUINO_IP (192,168,1,4)
 #define DATA_PORT       1234
