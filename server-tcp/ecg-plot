@@ -20,16 +20,18 @@ def proclog(fn=None):
 	for line in f:
 		us, val = line.strip().split(" ")
 		val = float(val)
-		if val != 2 and val != 1024 and val != 0:
+		if val < 3 or val == 1024: pass
+		else:
 			# print(us, "val:", val)
 			vals.append(val)
 	return np.array(vals)
 
 def prepdata(vals):
-	N = 500
+	maxfreq = 200
+	N = maxfreq * 2
 	# sample spacing
-	T = 1.0 / 1000.0
-	x = np.linspace(0.0, N*T, N, endpoint=False)
+	T = 200 / N # 200Hz max (to catch the wall current)
+	#x = np.linspace(0.0, N*T, N, endpoint=False)
 	yf = fft(vals)
 	xf = fftfreq(N, T)[:N//2]
 	print(yf)
