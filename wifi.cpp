@@ -29,28 +29,24 @@ void loop_wifi(void) {
 void setup_wifi(void) {
 	WiFi.mode(WIFI_STA);
 	WiFi.config(ip, gw, nm);
-	WiFi.setOutputPower(20.5); // 0 - 25 (multiples of .25)
+	WiFi.setOutputPower(20.5); // 0 - 20.5 (multiples of .25)
 	sp(F("Connecting to wife (WiFi.begin())..."));
-	WiFi.begin(ssid, password);
 	wifiConnectHandler = WiFi.onStationModeConnected(onWifiConnect);
 	wifiGotIPHandler = WiFi.onStationModeGotIP(onWifiGotIP);
 	wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
 
-	/* while (WiFi.waitForConnectResult() != WL_CONNECTED) */
-	/* 	{ spl(F("Conn. fail! Rebooting...")); delay(5000); ESP.restart(); } */
 	WiFi.setAutoReconnect(true);
 	WiFi.persistent(true);       // reconnect to prior access point
-}
+	WiFi.begin(ssid, password);
 
-void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
-	Serial.println(F("EVENT: Disconnected from Wi-Fi, trying to connect..."));
-	/* WiFi.disconnect(); */
-	/* WiFi.begin(ssid, password); */
-	wifi_connflags = 0;
-}
-
-void onWifiConnect(const WiFiEventStationModeConnected& event) {
-	Serial.println(F("EVENT: Connected to Wi-Fi sucessfully."));
+	sp(F("We're also going to wait until WL_CONNECTED"));
+	while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+		spl(F("Conn. fail! Rebooting..."));
+		delay(3000);
+		ESP.restart();
+	}
+	WiFi.setAutoReconnect(true);
+	WiFi.persistent(true);       // reconnect to prior access point
 }
 
 void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
@@ -58,6 +54,20 @@ void onWifiGotIP(const WiFiEventStationModeGotIP& event) {
 	Serial.print(F("IP address: "));
 	Serial.println(WiFi.localIP());
 	wifi_connflags = WIFI_FLAG_CONNECTED;
+}
+
+
+void onWifiDisconnect(const WiFiEventStationModeDisconnected& event) {
+	Serial.println(F("EVENT: Disconnected from Wi-Fi. Auto-reconnect should happen."));
+	/* WiFi.disconnect(); */
+	/* WiFi.begin(ssid, password); */
+	wifi_connflags = 0;
+}
+
+void onWifiConnect(const WiFiEventStationModeConnected& event) {
+	long rssi = WiFi.RSSI();
+	Serial.print(F("EVENT: Connected to Wi-Fi sucessfully. Strength: "));
+	Serial.println(rssi);
 }
 
 // Optional call to use if trying to requiring wifi during setup()

@@ -6,6 +6,7 @@
 #define NETDATA_SETTINGS_MAIN // declares char[] stmag and enmag
 #include "netdata-settings.h"
 #include "wifi_config.h"
+#include "wifi.h"
 #include "serialize.h"
 
 WiFiClient server;
@@ -44,6 +45,8 @@ void netdata_add(uint16_t v) { // call to add value to send
 	// void packi32(unsigned char *buf, unsigned long int i)
 	uint32_t us;
 	uint16_t testval;
+	/* #warning "netdata_add() is disabled" */
+	/* return; */
 	//us = micros();
 	us = millis();
 	/* us = *((uint32_t *)"abcd"); */
@@ -70,7 +73,11 @@ void netdata_send() {
 	/* Serial.print("Free heap: "); */
 	/* Serial.println(ESP.getFreeHeap()); */
 	if (!server.connected()) {
-		//Serial.println("Not connected. Losing data");
+		// don't bother sending out msg if wifi's down, since it
+		// should already be complaining through serial:
+		if (!(wifi_connflags | WIFI_FLAG_CONNECTED)) {
+			Serial.println("TCP not connected. Losing data");
+		}
 	} else {
 		/* Serial.print("[>"); */
 		/* Serial.print(PACKETCNT); */
@@ -103,16 +110,19 @@ void netdata_send() {
 
 void loop_netdata() {
 	unsigned long us_cur = micros();
-	if (us_cur - us_last_nettest > US_NETDATA_TEST) {
-		us_last_nettest = us_cur;
-		if (!server.connected()) {
-			Serial.println("TCP Connecting...");
-			if (server.connect(DATA_HOST, DATA_PORT)) {
-				Serial.println(" Connected!");
-				server.write("login 123456\n", 13);
+	if (wifi_connflags & WIFI_FLAG_CONNECTED) { // only bother if wifi connected
+		if (us_cur - us_last_nettest > US_NETDATA_TEST) {
+			us_last_nettest = us_cur;
+			if (!server.connected()) {
+				Serial.println("TCP Connecting...");
+				if (server.connect(DATA_HOST, DATA_PORT)) {
+					Serial.println(" TCP Connected! Logging in...");
+					server.write("login 123456\n", 13);
+					Serial.println(" TCP Hopefully login worked, but we're moving on now...");
+				}
+			} else {
+				// netdata_send_check(); // now handled by netdata_add()
 			}
-		} else {
-			// netdata_send_check();
 		}
 	}
 }

@@ -13,8 +13,8 @@ vi:
 		README.md \
 		wifi.cpp \
 		wifi.h \
+		wifi_config--example.h \
+		wifi_config.h
 		settings.h \
 		ota.cpp \
 		ota.h \
-		wifi_config--example.h \
-		wifi_config.h

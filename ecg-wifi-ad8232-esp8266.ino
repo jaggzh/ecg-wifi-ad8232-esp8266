@@ -46,7 +46,7 @@ void serial_reconnect() {
 void setup () {
 // initialize the serial communication:
 	Serial.begin(bauds[baudi]);
-	gdbstub_init();
+	//gdbstub_init();
 	setup_wifi();
 	setup_ota();
 	setup_netdata();
@@ -176,37 +176,32 @@ void loop () {
 	uint32_t cmicros = micros();
 
 	if (cmicros-us_last_sample >= US_SAMPLES) {
-		// Use to keep as fast as possible, but
-		// with a minimum time between sample readings:
-		// us_last_sample -= US_SAMPLES;
-
-		// Use to give an actual delay, regardless of
-		// other overhead:
 		us_last_sample = cmicros;
-
-		if ((digitalRead(PIN_LO_PLUS) == 1) || (digitalRead(PIN_LO_MINUS) == 1)) {
-			/* Serial.println('!');  // lots of output if no sensor leads */
-		} else {
-			int v;
-			v=analogRead(PIN_OUTPUT);
-			#ifdef PLOT_TO_SERIAL
-				//avv[avvi] = v;
-				//if (++avvi >= AVGCNT) avvi=0;
-				//slow = avg(avv, AVGCNT);
-				Serial.println(v);
-				/* Serial.print('\t'); */
-				/* Serial.println(slow); */
-			#endif
-			#ifdef SEND_TO_NET
-				//netdata_add(v);
-			#endif
-			// send the value of analog input 0:
+		if (wifi_connflags & WIFI_FLAG_CONNECTED) {
+			if ((digitalRead(PIN_LO_PLUS) == 1) ||
+					(digitalRead(PIN_LO_MINUS) == 1)) {
+				/* Serial.println('!');  // lots of output if no sensor leads */
+			} else {
+				int v;
+				v=analogRead(PIN_OUTPUT);
+				#ifdef PLOT_TO_SERIAL
+					//avv[avvi] = v;
+					//if (++avvi >= AVGCNT) avvi=0;
+					//slow = avg(avv, AVGCNT);
+					Serial.println(v);
+					/* Serial.print('\t'); */
+					/* Serial.println(slow); */
+				#endif
+				#ifdef SEND_TO_NET
+					netdata_add(v);
+				#endif
+				// send the value of analog input 0:
+			}
 		}
 	}
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
-	loop_serial();
-	loop_ota();
+	//loop_ota();
 	loop_wifi();
 	//wifi_connflags = loop_check_wifi();
 	/* if (wifi_connflags & WIFI_FLAG_IGNORE) {} */
@@ -215,7 +210,9 @@ void loop () {
 	/* 	else                                   ws_net_disconnected(); */
 	/* } */
 	if (wifi_connflags & WIFI_FLAG_CONNECTED) {
+		//#warning "Netdata paused in ecg.ino"
 		if (!netdata_pause) loop_netdata();
 	}
 	loop_button();
+	loop_serial();
 }
