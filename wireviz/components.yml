@@ -1,0 +1,19 @@
+connectors:
+  d1:
+    pinlabels: [Rst,GND,D4,D3,D2,D1,Rx,Tx,A0,D0,D5,D6,D7,D8,3.3V,5V]
+    pins:      [  1, 10,11,12,13,14,15,16, 2, 3, 4, 5, 6, 7,   8, 9]
+
+  ad8232:
+    pinlabels: [ Gnd, 3v3, Output, LO-, LO+, SDN ]
+    pins:      [ 1,     2,      3,   4,   5,   6 ]
+
+cables:
+  w1:
+    wirecount: 1
+
+connections:
+  -
+    - d1: [3.3V]
+    - w1: [1]
+    - ad8232: [3v3]
+
