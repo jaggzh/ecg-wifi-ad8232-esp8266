@@ -7,32 +7,49 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.fft import fft, ifft, fftfreq
 
-logdir="/tmp/tcpserver_data" #  .../2022-03-22--04:14AM
+# logdir="/tmp/tcpserver_data" #  .../2022-03-22--04:14AM
 
-files = [ fn for fn in listdir(logdir) if re.match(r'^\d\d\d\d-\d\d', fn) ]
-files.sort()
-logfn = join(logdir, files[-1])
+# files = [ fn for fn in listdir(logdir) if re.match(r'^\d\d\d\d-\d\d', fn) ]
+# files.sort()
+# logfn = join(logdir, files[-1])
+
+logfn="sample.dat"  # Line format: millis value
 print("Using logfile:", logfn)
 
 def proclog(fn=None):
+	millis = []  # millis
 	vals = []
 	f = open(logfn)
 	for line in f:
-		us, val = line.strip().split(" ")
+		ms, val = line.strip().split(" ")
+		ms = float(ms)
 		val = float(val)
 		if val < 3 or val == 1024: pass
 		else:
-			# print(us, "val:", val)
+			# print(ms, "val:", val)
 			vals.append(val)
-	return np.array(vals)
+			millis.append(ms)
+	return np.array(millis), np.array(vals)
 
-def prepdata(vals):
-	maxfreq = 200
-	N = maxfreq * 2
-	# sample spacing
-	T = 200 / N # 200Hz max (to catch the wall current)
+def prepdata(millis=None, vals=None):
 	#x = np.linspace(0.0, N*T, N, endpoint=False)
-	yf = fft(vals)
+	data_start=4000 # Picking a smaller window to examine
+	data_end=5000 # Picking a smaller window to examine
+	ms=millis[data_start:data_end]
+	vv=vals[data_start:data_end]
+	yf = fft(vv)
+	freqs = fftfreq(vv.shape[0], 
+	#yf[50:700] = 0
+	reval = np.fft.ifft(yf)
+	plt.plot(vv, label='Orig')
+	yf[0:2]=0
+	plt.plot(yf.real, label='FFT')
+	plt.plot(reval.real, label='iFT')
+	plt.legend()
+	plt.show()
+	#plt.ion(); plt.pause(0.05); plt.pause(0.05)
+	#ipdb.set_trace()
+	return
 	xf = fftfreq(N, T)[:N//2]
 	print(yf)
 	plt.plot(xf, 2.0/N * np.abs(yf[0:N//2]))
@@ -43,8 +60,8 @@ def prepdata(vals):
 	#plt.show()
 
 def main():
-	vals = proclog(logfn)
-	prepdata(vals)
+	millis, vals = proclog(logfn)
+	prepdata(millis=millis, vals=vals)
 
 main()
 

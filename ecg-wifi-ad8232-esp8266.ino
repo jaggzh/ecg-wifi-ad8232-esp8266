@@ -5,6 +5,7 @@
 #include "ota.h"
 #include "printutils.h"
 #include "netdata.h"
+#include "adc.h"
 
 unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
@@ -46,11 +47,12 @@ void serial_reconnect() {
 void setup () {
 // initialize the serial communication:
 	Serial.begin(bauds[baudi]);
-	//gdbstub_init();
+	gdbstub_init();
 	setup_wifi();
 	setup_ota();
 	setup_netdata();
-	pinMode(PIN_LO_PLUS, INPUT);  // Setup for leads off detection LO +
+	setup_adc();
+	//pinMode(PIN_LO_PLUS, INPUT);  // Setup for leads off detection LO +
 	pinMode(PIN_LO_MINUS, INPUT); // Setup for leads off detection LO -
 
 	pinMode(PIN_SDN, OUTPUT);     // Driving LOW shuts down EKG AD8232 board
@@ -59,9 +61,9 @@ void setup () {
 	pinMode(PIN_LED1, OUTPUT);
 	digitalWrite(PIN_LED1, LOW);
 
-	pinMode(PIN_BTN1, INPUT_PULLUP);
+	pinMode(PIN_BTN1, INPUT_PULLDOWN_16);
 	attachInterrupt(digitalPinToInterrupt( PIN_BTN1 ), int_hand_btn1_change, CHANGE );
-	int_btn1_trigged = digitalRead(PIN_BTN1) ? false : true;
+	int_btn1_trigged = BTN1_TRIGGED();
 }
 
 void led1_toggle() {
@@ -76,7 +78,6 @@ void led1_off() {
 	led1_state = false;
 	digitalWrite(PIN_LED1, LOW);
 }
-
 
 unsigned int avg(int *vals, unsigned char cnt) {
 	int32_t tot=0;
@@ -108,7 +109,7 @@ void loop_button() {
 		return;
 	} else {
 		last_loop_button_ms = cmillis;
-		int_btn1_trigged = digitalRead(PIN_BTN1) ? false : true;
+		int_btn1_trigged = BTN1_TRIGGED();
 	}
 	/* sp("BTN1: "); */
 	/* spl(int_btn1_trigged); */
@@ -169,7 +170,7 @@ void loop_serial() {
 	}
 }
 
-void loop () {
+void loop() {
 	//static int slow=0;
 	//static int avv[AVGCNT];
 	//static uint8_t avvi=0;
@@ -177,10 +178,20 @@ void loop () {
 
 	if (cmicros-us_last_sample >= US_SAMPLES) {
 		us_last_sample = cmicros;
+		loop_adc();
+	}
+	#if 0
+	if (cmicros-us_last_sample >= US_SAMPLES) {
+		us_last_sample = cmicros;
 		if (wifi_connflags & WIFI_FLAG_CONNECTED) {
-			if ((digitalRead(PIN_LO_PLUS) == 1) ||
-					(digitalRead(PIN_LO_MINUS) == 1)) {
+			/* if ((digitalRead(PIN_LO_PLUS) == 1) || */
+			/* 		(digitalRead(PIN_LO_MINUS) == 1)) { */
 				/* Serial.println('!');  // lots of output if no sensor leads */
+			
+			/* Only checking one electrode right now. No free pin for the
+			   other */
+			if (digitalRead(PIN_LO_MINUS) == 1) {
+				spl(F("Electrode LO- is disconnected, we think."));
 			} else {
 				int v;
 				v=analogRead(PIN_OUTPUT);
@@ -199,6 +210,7 @@ void loop () {
 			}
 		}
 	}
+	#endif
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
 	//loop_ota();
@@ -211,7 +223,7 @@ void loop () {
 	/* } */
 	if (wifi_connflags & WIFI_FLAG_CONNECTED) {
 		//#warning "Netdata paused in ecg.ino"
-		if (!netdata_pause) loop_netdata();
+		//if (!netdata_pause) loop_netdata();
 	}
 	loop_button();
 	loop_serial();

@@ -1,19 +1,38 @@
 connectors:
   d1:
-    pinlabels: [Rst,GND,D4,D3,D2,D1,Rx,Tx,A0,D0,D5,D6,D7,D8,3.3V,5V]
+    pinlabels: [rst,gnd,d4,d3,d2,d1,rx,tx,a0,d0,d5,d6,d7,d8,3.3v,5v]
     pins:      [  1, 10,11,12,13,14,15,16, 2, 3, 4, 5, 6, 7,   8, 9]
-
   ad8232:
-    pinlabels: [ Gnd, 3v3, Output, LO-, LO+, SDN ]
+    pinlabels: [ gnd, 3v3, output, lo-, lo+, sdn ]
     pins:      [ 1,     2,      3,   4,   5,   6 ]
+  ad7705:
+    pinlabels: [ain1+,ain1-,ain2+,ain2-,drdy,din,cs,vcc,dout,sck,rst,gnd]
+    pins:      [    1,    2,    3,    4,   5,  6, 7,  8,   9, 10, 11, 12]
+  gnd1:
+    pincount: 1
+  sw1:
+    pincount: 2
+  ledusr:
+    pincount: 2
+  ledheart:
+    pincount: 2
 
 cables:
   w1:
-    wirecount: 1
+    wirecount: 6
 
 connections:
   -
-    - d1: [3.3V]
-    - w1: [1]
+    - ad8232: gnd
+    - ad7705: gnd
+  -
+    - ad8232: output
+    - ad7705: ain1+
+  -
     - ad8232: [3v3]
-
+    - w1: [3]
+    - d1: [3.3v]
+  -
+    - ad7705: [din,dout,sck]
+    - w1:     [4,5,6]
+    - d1:     [d7,   d6, d5]

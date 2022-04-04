@@ -27,12 +27,14 @@
 //  LO+ -> D5, LO- -> D4.  Its "Output" signal goes to my D1Mini's A0 pin.
 #define PIN_OUTPUT   A0  // A0 (adc0)
 #define PIN_LO_MINUS D2  // d4 gpio2
-#define PIN_LO_PLUS  D5  // d5 gpio14 (sck)
+/* lo+ is disabled for now, because I don't have a pin free for it */
+/* #define PIN_LO_PLUS  D5  // d5 gpio14 (sck) */
 #define PIN_SDN      D7  // d7 gpio13 (mosi)
 
 #define PIN_LED1     D1  // D1 gpio5
-#define PIN_BTN1     D6  // D6 gpio16
-
+#define PIN_BTN1     D0  // D6 gpio16
+/* Use this to set the HIGH/LOW logic: */
+#define BTN1_TRIGGED() (digitalRead(PIN_BTN1) ? true : false)
 
 // Internal use
 #define BTN_MODE_NORMAL      0
