@@ -1,4 +1,7 @@
-#include <GDBStub.h>
+#define DO_GDB
+#ifdef DO_GDB
+	#include <GDBStub.h>
+#endif
 #include "settings.h"
 #include "wifi.h"
 #include "wifi_config.h"
@@ -47,7 +50,9 @@ void serial_reconnect() {
 void setup () {
 // initialize the serial communication:
 	Serial.begin(bauds[baudi]);
-	gdbstub_init();
+	#ifdef DO_GDB
+		gdbstub_init();
+	#endif
 	setup_wifi();
 	setup_ota();
 	setup_netdata();
@@ -62,7 +67,7 @@ void setup () {
 	digitalWrite(PIN_LED1, LOW);
 
 	pinMode(PIN_BTN1, INPUT_PULLDOWN_16);
-	attachInterrupt(digitalPinToInterrupt( PIN_BTN1 ), int_hand_btn1_change, CHANGE );
+	/* attachInterrupt(digitalPinToInterrupt( PIN_BTN1 ), int_hand_btn1_change, CHANGE ); */
 	int_btn1_trigged = BTN1_TRIGGED();
 }
 
@@ -98,9 +103,9 @@ void btn1_up() {
 	led1_off();
 }
 
-ICACHE_RAM_ATTR void int_hand_btn1_change() {
-	int_btn1_trigged = !int_btn1_trigged;
-}
+/* ICACHE_RAM_ATTR void int_hand_btn1_change() { */
+/* 	int_btn1_trigged = !int_btn1_trigged; */
+/* } */
 
 void loop_button() {
 	unsigned long cmillis = millis();
@@ -180,6 +185,7 @@ void loop() {
 		us_last_sample = cmicros;
 		loop_adc();
 	}
+	return;
 	#if 0
 	if (cmicros-us_last_sample >= US_SAMPLES) {
 		us_last_sample = cmicros;
@@ -226,5 +232,5 @@ void loop() {
 		//if (!netdata_pause) loop_netdata();
 	}
 	loop_button();
-	loop_serial();
+	/* loop_serial(); */
 }

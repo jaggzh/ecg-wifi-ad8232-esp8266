@@ -30,7 +30,7 @@ void setup_wifi(void) {
 	WiFi.mode(WIFI_STA);
 	WiFi.config(ip, gw, nm);
 	WiFi.setOutputPower(20.5); // 0 - 20.5 (multiples of .25)
-	sp(F("Connecting to wife (WiFi.begin())..."));
+	spl(F("Connecting to wife (WiFi.begin())..."));
 	wifiConnectHandler = WiFi.onStationModeConnected(onWifiConnect);
 	wifiGotIPHandler = WiFi.onStationModeGotIP(onWifiGotIP);
 	wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
@@ -39,12 +39,13 @@ void setup_wifi(void) {
 	WiFi.persistent(true);       // reconnect to prior access point
 	WiFi.begin(ssid, password);
 
-	sp(F("We're also going to wait until WL_CONNECTED"));
-	while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-		spl(F("Conn. fail! Rebooting..."));
-		delay(3000);
-		ESP.restart();
-	}
+	spl(F("We're also going to wait until WL_CONNECTED"));
+	/* while (WiFi.waitForConnectResult() != WL_CONNECTED) { */
+	/* 	//spl(F("Conn. fail! Rebooting...")); */
+	/* 	delay(500); */
+	/* 	spl(F("Conn. fail!")); */
+	/* 	//ESP.restart(); */
+	/* } */
 	WiFi.setAutoReconnect(true);
 	WiFi.persistent(true);       // reconnect to prior access point
 }
