@@ -1,4 +1,4 @@
-#define DO_GDB
+//#define DO_GDB
 #ifdef DO_GDB
 	#include <GDBStub.h>
 #endif
@@ -10,9 +10,12 @@
 #include "netdata.h"
 #include "adc.h"
 
-unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 115200, 230400, 250000, 500000 };
+unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 74880,
+                          115200, 230400, 250000, 500000 };
 #define BAUDSCNT (sizeof(bauds) / sizeof(*bauds))
-uint8_t baudi=5; // start at this baud (5 => 115200)
+//uint8_t baudi=5; // (5 => 74880 (bootloader baud), to see esp8266 bootloader msgs
+                   // but apparently this isn't supported by my pc
+uint8_t baudi=6; // 6 => 115200
 unsigned long us_last_sample=micros();
 int netdata_pause=0;
 
@@ -55,13 +58,14 @@ void setup () {
 	#endif
 	setup_wifi();
 	setup_ota();
-	setup_netdata();
 	setup_adc();
+	setup_netdata();
 	//pinMode(PIN_LO_PLUS, INPUT);  // Setup for leads off detection LO +
 	pinMode(PIN_LO_MINUS, INPUT); // Setup for leads off detection LO -
 
-	pinMode(PIN_SDN, OUTPUT);     // Driving LOW shuts down EKG AD8232 board
-	digitalWrite(PIN_SDN, HIGH);  //
+	// Used for direct connection to AD8232. We're not doing direct.
+	/* pinMode(PIN_SDN, OUTPUT);     // Driving LOW shuts down EKG AD8232 board */
+	/* digitalWrite(PIN_SDN, HIGH);  // */
 
 	pinMode(PIN_LED1, OUTPUT);
 	digitalWrite(PIN_LED1, LOW);
@@ -181,26 +185,27 @@ void loop() {
 	//static uint8_t avvi=0;
 	uint32_t cmicros = micros();
 
+	/* This is useful for testing just the reading/ADC */
+	/* if (cmicros-us_last_sample >= US_SAMPLES) { */
+	/* 	us_last_sample = cmicros; */
+	/* 	loop_adc(); */
+	/* } */
+	/* return; */
+
 	if (cmicros-us_last_sample >= US_SAMPLES) {
 		us_last_sample = cmicros;
-		loop_adc();
-	}
-	return;
-	#if 0
-	if (cmicros-us_last_sample >= US_SAMPLES) {
-		us_last_sample = cmicros;
-		if (wifi_connflags & WIFI_FLAG_CONNECTED) {
-			/* if ((digitalRead(PIN_LO_PLUS) == 1) || */
-			/* 		(digitalRead(PIN_LO_MINUS) == 1)) { */
-				/* Serial.println('!');  // lots of output if no sensor leads */
-			
-			/* Only checking one electrode right now. No free pin for the
-			   other */
-			if (digitalRead(PIN_LO_MINUS) == 1) {
-				spl(F("Electrode LO- is disconnected, we think."));
-			} else {
-				int v;
-				v=analogRead(PIN_OUTPUT);
+		/* if ((digitalRead(PIN_LO_PLUS) == 1) || */
+		/* 		(digitalRead(PIN_LO_MINUS) == 1)) { */
+			/* Serial.println('!');  // lots of output if no sensor leads */
+		
+		/* Only checking one electrode right now. No free pin for the
+		   other */
+		if (digitalRead(PIN_LO_MINUS) == 1) {
+			spl(F("Electrode LO- is disconnected, we think."));
+		} else {
+			unsigned int v;
+			/* v=analogRead(PIN_OUTPUT); */
+			if (!loop_adc(&v)) { // 0 == success
 				#ifdef PLOT_TO_SERIAL
 					//avv[avvi] = v;
 					//if (++avvi >= AVGCNT) avvi=0;
@@ -210,13 +215,13 @@ void loop() {
 					/* Serial.println(slow); */
 				#endif
 				#ifdef SEND_TO_NET
-					netdata_add(v);
+					if (wifi_connflags & WIFI_FLAG_CONNECTED) {
+						netdata_add(v);
+					}
 				#endif
-				// send the value of analog input 0:
 			}
 		}
 	}
-	#endif
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
 	//loop_ota();
@@ -229,7 +234,7 @@ void loop() {
 	/* } */
 	if (wifi_connflags & WIFI_FLAG_CONNECTED) {
 		//#warning "Netdata paused in ecg.ino"
-		//if (!netdata_pause) loop_netdata();
+		if (!netdata_pause) loop_netdata(); 
 	}
 	loop_button();
 	/* loop_serial(); */

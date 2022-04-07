@@ -52,8 +52,8 @@ void setup_ota(void) {
   });
 
   ArduinoOTA.begin();
-  Serial.println("Ready");
-  Serial.print("OTA: IP address: ");
+  Serial.println(F("OTA Ready"));
+  Serial.print(F("OTA: IP address: "));
   Serial.println(WiFi.localIP());
 }
 

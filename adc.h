@@ -8,6 +8,6 @@
 #endif
 
 void setup_adc();
-void loop_adc();
+int loop_adc(unsigned int *val);
 
 #endif
