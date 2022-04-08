@@ -45,7 +45,7 @@ void setup_adc() {
 	/* TM7705.readClockRegister(AD770X::CHN_AIN1); */
 	/* TM7705.readClockRegister(AD770X::CHN_AIN2); */
 	/* adc_waitdataready_timeout(AD770X::CHN_AIN1, "Before init 1"); */
-	TM7705.init(AD770X::CHN_AIN1, AD770X::CLK_DIV_1, AD770X::UNIPOLAR, AD770X::GAIN_1, AD770X::UPDATE_RATE_500);
+	TM7705.init(AD770X::CHN_AIN1, AD770X::CLK_DIV_1, AD770X::BIIPOLAR, AD770X::GAIN_1, AD770X::UPDATE_RATE_500);
 	/* TM7705.readClockRegister(AD770X::CHN_AIN1); */
 	/* adc_waitdataready_timeout(AD770X::CHN_AIN1, "After init 1"); */
 	/* TM7705.init(AD770X::CHN_AIN2, AD770X::CLK_DIV_2, AD770X::UNIPOLAR, AD770X::GAIN_4, AD770X::UPDATE_RATE_50); */
