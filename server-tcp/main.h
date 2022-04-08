@@ -33,13 +33,16 @@ void our_cb_cl_disconnect(
 void our_cb_buf_bundle(uint8_t *buf, uint32_t blen);
 // \/ Called by our_cb_buf_bundle() when data type packet received
 void handle_bundle_data(uint8_t *buf, uint32_t blen);
-void handle_bundle_btn(uint8_t *buf, uint32_t blen);
+void handle_bundle_btn1(uint8_t *buf, uint32_t blen);
 
 // Other local routines
 
 int init_datadir();
 char begin_login_session(); // call on successful login
-char end_login_session();
+void end_login_session();
+
+char begin_file_session();  // creates and opens file
+void end_file_session();
 
 // \/  called for each read after user login
 void process_ip_packet(char *buf, int buflen);

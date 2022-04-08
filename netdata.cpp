@@ -8,21 +8,11 @@
 #include "wifi_config.h"
 #include "wifi.h"
 #include "serialize.h"
+#include "printutils.h"
 
 WiFiClient server;
 
 unsigned long us_last_nettest=micros();
-
-/* struct ecg_packet { */
-/* 	uint32_t us; */
-/* 	uint16_t val; */
-/* }; */
-/* // Cluster packets to maximum of roughly one TCP packet */
-/* // (not yet sure if esp8266 can handle this) */
-/* #define PACKETCNT (1500/sizeof(struct ecg_packet)) */
-/* struct ecg_packet packets[PACKETCNT]; */
-/* int nextpacketi=0; */
-
 
 // Full package to send out to net
 // Includes: start and end MAGIC
@@ -32,6 +22,13 @@ uint8_t ecg_fullpackage[FULLPAK_SIZE+1]; // +1 for safety. it's unused.
 // \/ Points to where the data actually starts
 uint8_t *ecg_netdata = ecg_fullpackage + MAGIC_SIZE + PAKTYPE_SIZE;
 int nextpacketi=0;
+
+// Full button package
+struct ecg_btn_package {
+	uint8_t magic_st[MAGIC_SIZE] = MAGIC_ST;
+	PAKTYPE_TYPE paktype[PAKTYPE_SIZE] = { PAK_T_BTN1 };
+	uint8_t magic_en[MAGIC_SIZE] = MAGIC_EN;
+} ecg_btn_package;
 
 void setup_netdata() {
 	static_assert(sizeof(stmag) == sizeof(enmag), "Let's keep MAGIC_ST and MAGIC_EN the same length");
@@ -68,16 +65,20 @@ void netdata_add(uint16_t v) { // call to add value to send
 	}
 }
 
+void netdata_send_btn1() {
+	if (!server.connected()) {
+		Serial.println(F("TCP not connected. Button not sent"));
+	} else {
+		server.write((uint8_t *)(&ecg_btn_package), BTNPAK_SIZE);
+		Serial.println(F("BTN1 sent"));
+	}
+}
+
 void netdata_send() {
-	//Serial.println("netdata_send()");
-	/* Serial.print("Free heap: "); */
-	/* Serial.println(ESP.getFreeHeap()); */
 	if (!server.connected()) {
 		// don't bother sending out msg if wifi's down, since it
 		// should already be complaining through serial:
-		if (!(wifi_connflags | WIFI_FLAG_CONNECTED)) {
-			Serial.println("TCP not connected. Losing data");
-		}
+		Serial.println(F("TCP not connected. Losing data"));
 	} else {
 		/* Serial.print("[>"); */
 		/* Serial.print(PACKETCNT); */
@@ -120,6 +121,7 @@ void loop_netdata() {
 					server.write("login 123456\n", 13);
 					Serial.println(" TCP Hopefully login worked, but we're moving on now...");
 				}
+				Serial.println("/TCP Connecting");
 			} else {
 				// netdata_send_check(); // now handled by netdata_add()
 			}

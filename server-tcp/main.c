@@ -65,13 +65,16 @@ void our_cb_buf_bundle(uint8_t *buf, uint32_t blen) {
 	blen -= PAKTYPE_SIZE;  // ^
 	if (paktype == PAK_T_DATA) {
 		handle_bundle_data(buf, blen);
-	} else if (paktype == PAK_T_BTN) {
-		handle_bundle_btn(buf, blen);
+	} else if (paktype == PAK_T_BTN1) {
+		handle_bundle_btn1(buf, blen);
 	}
 }
 	
-void handle_bundle_btn(uint8_t *buf, uint32_t blen) {
+void handle_bundle_btn1(uint8_t *buf, uint32_t blen) {
 	printf("BUTTON Packet Received\n");
+	end_file_session();
+	begin_file_session("btn1");
+	printf("  --> NEW LOG FILE: %s\n", connst.datafn);
 }
 
 void handle_bundle_data(uint8_t *buf, uint32_t blen) {
@@ -196,8 +199,8 @@ int init_datadir() {
 }
 
 // returns 0 on error (ie. couldn't create data file)
-char begin_login_session() {
-	connst.datafn = strdup(make_data_fn()); // static storage, not thread safe
+char begin_file_session(char *label) {
+	connst.datafn = strdup(make_data_fn(label)); // static storage, not thread safe
 	if (!(connst.dataf = fopen(connst.datafn, "a"))) {
 		printf("ERROR OPENING DATA FILE: %s\n", connst.datafn);
 		return 0;
@@ -206,7 +209,12 @@ char begin_login_session() {
 	return 1;
 }
 
-char end_login_session() {
+// returns 0 on error (ie. couldn't create data file)
+char begin_login_session() {
+	return begin_file_session(NULL);
+}
+
+void end_file_session() {
 	if (connst.dataf) {
 		fclose(connst.dataf);
 		connst.dataf = NULL;
@@ -215,19 +223,29 @@ char end_login_session() {
 		free(connst.datafn);
 		connst.datafn = NULL;
 	}
+}
+
+void end_login_session() {
+	end_file_session();
 	connst.login = 0;
 	connst.sockfd = -1;
 }
 
-char *make_data_fn() {
+char *make_data_fn(char *label) {
 	time_t rawtime;
 	struct tm *timeinfo;
-	static char buffer[512];
+	static char pathtimebuffer[512];
+	static char fnbuffer[512];
 	
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 	
-	strftime(buffer, 511, DATA_DIR "/" "%Y-%m-%d--%H:%M%p", timeinfo);
-	return buffer;
+	strftime(pathtimebuffer, 511, DATA_DIR "/" "%Y-%m-%d--%H:%M%p", timeinfo);
+	if (label) {
+		snprintf(fnbuffer, 511, "%s--%s", pathtimebuffer, label);
+		return fnbuffer;
+	} else {
+		return pathtimebuffer;
+	}
 }
 

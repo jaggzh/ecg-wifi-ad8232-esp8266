@@ -17,12 +17,16 @@ unsigned long bauds[] = { 2400, 9600, 19200, 38400, 57600, 74880,
                    // but apparently this isn't supported by my pc
 uint8_t baudi=6; // 6 => 115200
 unsigned long us_last_sample=micros();
+unsigned long us_last_disconnect_notice=millis();
 int netdata_pause=0;
 
 uint8_t btn1state = BTN_MODE_NORMAL;
+unsigned long btn1ctr = 0;
 unsigned long btn1time = 0;
 volatile bool int_btn1_trigged = false;
 bool led1_state = false;
+
+bool leads_disc_flag = false;
 
 void baudnext() {
 	if (baudi < BAUDSCNT-1) {
@@ -73,6 +77,9 @@ void setup () {
 	pinMode(PIN_BTN1, INPUT_PULLDOWN_16);
 	/* attachInterrupt(digitalPinToInterrupt( PIN_BTN1 ), int_hand_btn1_change, CHANGE ); */
 	int_btn1_trigged = BTN1_TRIGGED();
+
+	sp(F("Free heap: "));
+	spl(ESP.getFreeHeap());
 }
 
 void led1_toggle() {
@@ -98,11 +105,13 @@ unsigned int avg(int *vals, unsigned char cnt) {
 void btn1_down() {
 	spl("BUTTON1 Down");
 	led1_on();
+	btn1time = millis();
+	netdata_send_btn1();
 	/* led1_toggle(); */
 }
 void btn1_up() {
 	sp("/BUTTON1 was down for ");
-	sp(micros()-btn1time);
+	sp((millis()-btn1time)/(float)1000);
 	spl(" seconds");
 	led1_off();
 }
@@ -114,7 +123,7 @@ void btn1_up() {
 void loop_button() {
 	unsigned long cmillis = millis();
 	static unsigned long last_loop_button_ms = cmillis;
-	if (cmillis - last_loop_button_ms < 20) { // slow down testing
+	if (cmillis - last_loop_button_ms < 30) { // slow down testing
 		return;
 	} else {
 		last_loop_button_ms = cmillis;
@@ -127,10 +136,10 @@ void loop_button() {
 	if (btn1state == BTN_MODE_NORMAL) {
 		if (int_btn1_trigged) {             // button pressed
 			btn1state = BTN_MODE_DEBOUNCE;
-			btn1time = cmillis;
+			btn1ctr = cmillis;
 		}
 	} else if (btn1state == BTN_MODE_DEBOUNCE) {
-		if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+		if (cmillis - btn1ctr > BTN_DEBOUNCE_MS) {
 			if (int_btn1_trigged) {         // button still pressed
 				btn1_down();
 				btn1state = BTN_MODE_DOWN;
@@ -143,10 +152,10 @@ void loop_button() {
 		if (int_btn1_trigged) {         // button still pressed
 		} else {                        // no longer pressed, so debounce lift
 			btn1state = BTN_MODE_UP_DEBOUNCE;
-			btn1time = cmillis;
+			btn1ctr = cmillis;
 		}
 	} else if (btn1state == BTN_MODE_UP_DEBOUNCE) {
-		if (cmillis - btn1time > BTN_DEBOUNCE_MS) {
+		if (cmillis - btn1ctr > BTN_DEBOUNCE_MS) {
 			if (!int_btn1_trigged) { // button stayed up, so button_up
 				btn1_up();
 				btn1state = BTN_MODE_NORMAL;
@@ -184,6 +193,7 @@ void loop() {
 	//static int avv[AVGCNT];
 	//static uint8_t avvi=0;
 	uint32_t cmicros = micros();
+	uint32_t cmillis = millis();
 
 	/* This is useful for testing just the reading/ADC */
 	/* if (cmicros-us_last_sample >= US_SAMPLES) { */
@@ -201,9 +211,17 @@ void loop() {
 		/* Only checking one electrode right now. No free pin for the
 		   other */
 		if (digitalRead(PIN_LO_MINUS) == 1) {
-			spl(F("Electrode LO- is disconnected, we think."));
+			if (cmillis-us_last_disconnect_notice >= MS_DISC_NOTE) {
+				us_last_disconnect_notice = cmillis;
+				leads_disc_flag = true;
+				spl(F("Electrode LO- is disconnected."));
+			}
 		} else {
 			unsigned int v;
+			if (leads_disc_flag) {
+				leads_disc_flag = false;
+				spl(F("Electrode LO- REconnected"));
+			}
 			/* v=analogRead(PIN_OUTPUT); */
 			if (!loop_adc(&v)) { // 0 == success
 				#ifdef PLOT_TO_SERIAL
@@ -232,10 +250,8 @@ void loop() {
 	/* 	if ((wifi_connflags & WIFI_FLAG_CONNECTED)) ws_net_connect(); */
 	/* 	else                                   ws_net_disconnected(); */
 	/* } */
-	if (wifi_connflags & WIFI_FLAG_CONNECTED) {
 		//#warning "Netdata paused in ecg.ino"
-		if (!netdata_pause) loop_netdata(); 
-	}
+	if (!netdata_pause) loop_netdata(); 
 	loop_button();
 	/* loop_serial(); */
 }

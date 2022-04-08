@@ -68,9 +68,13 @@
 #define PAKTYPE_TYPE uint8_t
 
 // packet/bundle types:
-#define PAK_T_DATA 1
-#define PAK_T_BTN  2
+#define PAK_T_DATA  1
+#define PAK_T_BTN1  2
 
+// Button
+#define BTNPAK_SIZE (MAGIC_SIZE*2 + PAKTYPE_SIZE)
+
+// Main data
 #define FULLPAK_SIZE (MAGIC_SIZE*2 + PAKTYPE_SIZE + SAMPLE_SIZE*MAX_PACKETS)
 #define MAX_PACKETS  (NET_MAXLEN/SAMPLE_SIZE) // fit within ESP's packet (524?)
 // ^ this isn't fully accurate, if we were precise with the NET_MAXLEN,
