@@ -1,7 +1,6 @@
 #ifndef _ADC_SETTINGS_H
 #define _ADC_SETTINGS_H
 
-
 /* Uncomment either or both of the following DISABLE options
  * if you're not using these features/pins/wires.
  *
