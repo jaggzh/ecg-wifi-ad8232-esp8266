@@ -1,6 +1,9 @@
 #ifndef PRINTUTILS_H
 #define PRINTUTILS_H
 //#define DEBUG 1
+#ifdef DEBUG
+	#undef DEBUG
+#endif
 #ifdef ARDUINO
 	#include <Arduino.h>
 	#define sp(a)  (Serial.print(a))

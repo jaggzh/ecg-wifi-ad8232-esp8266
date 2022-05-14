@@ -53,11 +53,11 @@ void netdata_add(uint16_t v) { // call to add value to send
 
 	packi32(ecg_netdata + (nextpacketi*SAMPLE_SIZE), us);
 	packi16(ecg_netdata + (nextpacketi*SAMPLE_SIZE) + 4, v);
-	/* Serial.print(" u:"); */
-	/* Serial.print(packets[nextpacketi].us); */
-	/* Serial.print(" v:"); */
-	/* Serial.print(packets[nextpacketi].val); */
-	/* Serial.print(". "); */
+	/* dbsp(" u:"); */
+	/* dbsp(packets[nextpacketi].us); */
+	/* dbsp(" v:"); */
+	/* dbsp(packets[nextpacketi].val); */
+	/* dbsp(". "); */
 	nextpacketi++;
 	if (nextpacketi >= MAX_PACKETS) {
 		netdata_send();
@@ -80,11 +80,11 @@ void netdata_send() {
 		// should already be complaining through serial:
 		Serial.println(F("TCP not connected. Losing data"));
 	} else {
-		/* Serial.print("[>"); */
-		/* Serial.print(PACKETCNT); */
-		/* Serial.print("="); */
-		/* Serial.print(sizeof(packets)); */
-		/* Serial.print("b "); */
+		/* dbsp("[>"); */
+		/* dbsp(PACKETCNT); */
+		/* dbsp("="); */
+		/* dbsp(sizeof(packets)); */
+		/* dbsp("b "); */
 		memcpy(ecg_fullpackage + PAKFULL_MAGIC_OFFSET, stmag, MAGIC_SIZE);
 		// \/ we static_assert()ed that this is one byte:
 		ecg_fullpackage[PAKFULL_TYPE_OFFSET] = PAK_T_DATA;
@@ -101,11 +101,11 @@ void netdata_send() {
 			server.write(enmag, sizeof(enmag)); */
 		server.write(ecg_fullpackage,
 				PAKFULL_DATA_OFFSET + (nextpacketi*SAMPLE_SIZE) + MAGIC_SIZE);
-		/* Serial.println(""); */
-		Serial.print("Data size: ");
-		Serial.println(PAKFULL_DATA_OFFSET + (nextpacketi*SAMPLE_SIZE) + MAGIC_SIZE);
-		//Serial.println(sizeof(ecg_netdata) + sizeof(stmag) + sizeof(enmag));
-		//Serial.println("");
+		/* dbspl(""); */
+		dbsp("Data size: ");
+		dbspl(PAKFULL_DATA_OFFSET + (nextpacketi*SAMPLE_SIZE) + MAGIC_SIZE);
+		//dbspl(sizeof(ecg_netdata) + sizeof(stmag) + sizeof(enmag));
+		//dbspl("");
 	}
 }
 

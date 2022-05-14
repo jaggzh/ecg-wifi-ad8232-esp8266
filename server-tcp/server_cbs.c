@@ -1,6 +1,7 @@
 #define _IN_SERVER_CBS_C
 #include "settings.h"
 #include "server_cbs.h"
+#include "flags.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +53,7 @@ void (*cb_svr_cl_disconnect)(           // when client disconnects
 // Internal
 int _svr_sockfd=-1;
 int _svr_fork_pid=-1;
+int _svr_quit_flag=0;
 
 void _svr_sighandler(int sig) {
 	int i;
@@ -69,6 +71,7 @@ void _svr_sighandler(int sig) {
 			}
 		}
 		printf("\n");
+		_svr_quit_flag=1;
 		exit(0);
 	}
 }
@@ -183,7 +186,8 @@ void _svr_client_handler(int sock, struct sockaddr_in *cli_addr) {
 			cli_addr    // struct sockaddr_in *cli_addr
 			);
 	}
-	while (1) {
+	_svr_quit_flag = 0;
+	while (!_svr_quit_flag) {
 		bzero(buffer,MAXBUF);
 		n = read(sock,buffer,MAXBUF);
 		
@@ -212,8 +216,19 @@ void _svr_client_handler(int sock, struct sockaddr_in *cli_addr) {
 			exit(0);
 		}
 		
-		printf("Received from %s: %d bytes: {%*s}\r\n",
-			ipstr, n, n, buffer);
+		if (DEBUG_FLAGS & DEBUG_FLAG_SHOW_DATA) {
+			printf("Received from %s: %d bytes: {",
+				ipstr, n);
+			int maxn = (DEBUG_FLAGS & DEBUG_FLAG_ALL_DATA) ? n : 8;
+			for (int i=0; i<maxn; i++) {
+				if (i) putc(' ', stdout);
+				printf("%3d", (unsigned char)buffer[i]);
+			}
+			printf("}\r\n");
+		} else {
+			printf("Received from %s: %d bytes\r\n",
+				ipstr, n, n, buffer);
+		}
 
 		if (cb_svr_cl_read) {
 			(*cb_svr_cl_read)(

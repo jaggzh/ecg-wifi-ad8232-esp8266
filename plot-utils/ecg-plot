@@ -5,7 +5,9 @@ from os.path import isfile, join
 import re
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
 from scipy.fft import fft, ifft, fftfreq
+from scipy import signal
 from scipy.signal import find_peaks, butter, lfilter, freqz, iirnotch
 from signalgen import sine_wave_samps
 import argparse
@@ -14,6 +16,8 @@ argpa = argparse.ArgumentParser(
 		description='Plot ECG/EKG file. Line format: ms val\\n')
 argpa.add_argument("-f", "--file", required=True, help="Data filename")
 argpa.add_argument("-v", "--verbose", action='store_true', help="Verbose")
+argpa.add_argument("-N", "--noautonotch", action='store_true', help="Disable plot of auto-detected 50-60Hz EM noise.")
+argpa.add_argument("-R", "--noraw", action='store_true', help="Disable raw data plot")
 args = argpa.parse_args()
 
 print("Using logfile:", args.file)
@@ -52,6 +56,17 @@ def calc_sampling_rate(timedata, time_units=None):
 	sam_per_sec = (1/time_units) / avg
 	return sam_per_sec
 
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    return b, a
+
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
 def butter_lowpass(cutoff, fs, order=5):
     return butter(order, cutoff, fs=fs, btype='low', analog=False)
 
@@ -73,18 +88,18 @@ def bandstop(data, lowcut, highcut, fs=None, order=2):
 	y = lfilter(i, u, data)
 	return y
 
-def prepdata(millis=None, vals=None, plotraw=False):
+def prepdata(millis=None, vals=None):
 	#x = np.linspace(0.0, N*T, N, endpoint=False)
-	data_start=3800 # Picking a smaller window to examine
-	data_end=5000 # Picking a smaller window to examine
+	data_start=0 # Picking a smaller window to examine
+	data_end=-1 # Picking a smaller window to examine
 
 	# Let's calculate the sampling rate based on the full data
 	sam_per_sec = calc_sampling_rate(millis, time_units=1e-3)
 	print(f"Calculated avg sampling rate: {sam_per_sec} Hz")
 	ms=millis[data_start:data_end]
 	vv=vals[data_start:data_end]
-	ms=millis
-	vv=vals
+	#ms=millis
+	#vv=vals
 	ff = fft(vv)
 	#ff[len(ff)//2+1] = 0
 	# Our MCU code presently is trying to sample at 250Hz,
@@ -103,15 +118,41 @@ def prepdata(millis=None, vals=None, plotraw=False):
 	reval = np.fft.ifft(ff)
 	fig, axs = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3,1]})
 	fig.tight_layout()
-	if plotraw:
+	vv = vv-np.average(vv)
+	axs[0].set_xticks(np.arange(ms.min(),ms.max(),200))
+	axs[0].minorticks_on()
+	axs[0].xaxis.set_minor_locator(AutoMinorLocator(5))
+
+	axs[0].grid(which='major', linestyle='-', color=(1,0,0), linewidth='1')
+	axs[0].grid(which='minor', linestyle='-', color=(1, 0.7, 0.7), linewidth='.75')
+
+	vlines = np.arange(ms.min(),ms.max(),1000*60)
+	axs[0].vlines(vlines, color=(.4, .4, .4), ymin=vv.min(), ymax=vv.max())
+
+	if not args.noraw:
 		axs[0].plot(ms,
 					vv,
 					label='ECG Data',
-					linewidth=1)
+					linewidth=1,
+					color=(.85, .85, 1)
+				)
 
 	# Lowpass
 	# filtered = butter_lowpass_filter(vv, 45, sam_per_sec, order=5)
 	# axs[0].plot(ms, filtered, label='ECG Filtered')
+
+	# Working (but maybe causing notch filter ringing)
+	vv = butter_highpass_filter(vv, 1, sam_per_sec, order=5)
+	# axs[0].plot(ms,
+	# 			vv,
+	# 			label='Highpass 5',
+	# 			linewidth=1)
+
+	# vv = butter_highpass_filter(vv, 10, sam_per_sec, order=5)
+	# axs[0].plot(ms,
+	# 			vv,
+	# 			label='Highpass 10',
+	# 			linewidth=1)
 
 	ff[0]=0
 	axs[1].plot(freqs, ff.real, label='FFT')
@@ -161,16 +202,17 @@ def prepdata(millis=None, vals=None, plotraw=False):
 		print(f" ")
 
 		# Notch filter
-		filtered = notch(vv, freqs[acfreqidx], sam_per_sec, quality=10)
-		axs[0].plot(ms,
-		            filtered,
-		            label=f"Notch-Filtered +{freqs[acfreqidx]:.2f}Hz q10",
-		            linewidth=2)
+		if not args.noautonotch:
+			filtered = notch(vv, freqs[acfreqidx], sam_per_sec, quality=10)
+			axs[0].plot(ms,
+						filtered,
+						label=f"Notch-Filtered +{freqs[acfreqidx]:.2f}Hz q10",
+						linewidth=1)
 		filtered = notch(vv, 60, sam_per_sec, quality=10)
 		axs[0].plot(ms,
 		            filtered,
-		            label="Notch-Filtered 60Hz q10",
-		            linewidth=2)
+		            label="1Hz Highpass + 60Hz Notch Filter",
+		            linewidth=1, color='black')
 
 	# # Good
 	# # 59,60,61 notch works well
@@ -204,8 +246,8 @@ def prepdata(millis=None, vals=None, plotraw=False):
 
 def main():
 	millis, vals = proclog(args.file)
-	#prepdata(millis=millis, vals=vals, plotraw=False)
-	prepdata(millis=millis, vals=vals, plotraw=True)
+	#prepdata(millis=millis, vals=vals)
+	prepdata(millis=millis, vals=vals)
 
 main()
 

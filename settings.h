@@ -13,7 +13,9 @@
 // Wifi works with these
 //#define US_SAMPLES  (1000000/100) // min uS between samples
 //#define US_SAMPLES  (1000000/250) // min uS between samples
-#define US_SAMPLES    (1000000/500) // min uS between samples
+//#define US_SAMPLES    (1000000/500) // min uS between samples
+//#define US_SAMPLES    (1000000/750) // min uS between samples
+#define US_SAMPLES    (1000000/1000) // min uS between samples
 #define MS_DISC_NOTE  (1000*7)     // time between notices of lead disconnect
 
 /* For averaging out the raw data */

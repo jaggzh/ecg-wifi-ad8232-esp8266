@@ -35,4 +35,5 @@ vi:
 		serialize.h \
 		../server-websockets/server.cc \
 		settings-example.h \
-		settings.h
+		settings.h \
+		flags.h

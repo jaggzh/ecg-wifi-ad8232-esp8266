@@ -242,7 +242,7 @@ void loop() {
 	}
 	// \/ came from some webpage. We have enough other stuff going on though
 	//delay (1); //Wait for a bit to keep serial data from saturating
-	//loop_ota();
+	loop_ota();
 	loop_wifi();
 	//wifi_connflags = loop_check_wifi();
 	/* if (wifi_connflags & WIFI_FLAG_IGNORE) {} */

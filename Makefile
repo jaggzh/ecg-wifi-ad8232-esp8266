@@ -26,4 +26,5 @@ vi:
 		wifi_config.h \
 		settings.h \
 		ota.cpp \
-		ota.h
+		ota.h \
+		printutils.h
