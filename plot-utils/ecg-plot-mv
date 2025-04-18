@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+import ipdb
+from os import listdir
+from os.path import isfile, join
+import re
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
+from scipy.fft import fft, ifft, fftfreq
+from scipy import signal
+from scipy.signal import find_peaks, butter, lfilter, freqz, iirnotch
+from signalgen import sine_wave_samps
+import argparse
+
+argpa = argparse.ArgumentParser(
+        description='Plot ECG/EKG file. Line format: ms val\\n')
+argpa.add_argument("-f", "--file", required=True, help="Data filename")
+argpa.add_argument("-v", "--verbose", action='store_true', help="Verbose")
+argpa.add_argument("-N", "--noautonotch", action='store_true', help="Disable plot of auto-detected 50-60Hz EM noise.")
+argpa.add_argument("-R", "--noraw", action='store_true', help="Disable raw data plot")
+args = argpa.parse_args()
+
+print("Using logfile:", args.file)
+
+def proclog(fn=None):
+    millis = []  # millis
+    vals = []
+    f = open(args.file)
+    for line in f:
+        ms, val = line.strip().split(" ")
+        ms = float(ms)
+        val = float(val)
+        if val < 3 or val == 1024: pass
+        else:
+            # print(ms, "val:", val)
+            vals.append(val)
+            millis.append(ms)
+    return np.array(millis), np.array(vals)
+
+def calc_sampling_rate(timedata, time_units=None):
+    # Calculate average Hz of given times.
+    #  Example time_units:
+    #   time_units = .001 (or 1e-3) for millisecond data
+    #   time_units = .000001 (or 1e-6) for uS data
+    # 1. First we generate an array of the deltas (differences in time)
+    aa = [timedata[i+1] - float(timedata[i]) for i in range(len(timedata)-1)]
+    #print([a for a in enumerate(aa)])
+    avg = sum(aa)/len(aa)
+    # 2. Filter outliers
+    #  (These exist because of jumps in the sampling data that we
+    #  got when removing invalid sensor data, like a lot of 2s and
+    #  1024s we got from moving around or disconnecting the electrodes)
+    aa = [x for x in aa if (abs(x-avg)/avg) < 1.5]
+    # 3. Recalculate avg
+    avg = sum(aa)/len(aa)
+    sam_per_sec = (1/time_units) / avg
+    return sam_per_sec
+
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    return b, a
+
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+def butter_lowpass(cutoff, fs, order=5):
+    return butter(order, cutoff, fs=fs, btype='low', analog=False)
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def notch(data, f, fs=None, quality=30):
+    notch_num, notch_den = iirnotch(f, quality, fs=fs)
+    return lfilter(notch_num, notch_den, data)
+
+def bandstop(data, lowcut, highcut, fs=None, order=2):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+
+    i, u = butter(order, [low, high], btype='bandstop')
+    y = lfilter(i, u, data)
+    return y
+
+def adc_to_mv(adc_val):
+    """
+    Convert TM7705 16-bit ADC values to millivolts
+    TM7705 in bipolar mode with 2.5V reference:
+    - 0 = -2.5V
+    - 32767 ≈ 0V
+    - 65535 = +2.5V
+    """
+    return ((adc_val / 65535.0) * 5000) - 2500  # -2500mV to +2500mV range
+
+def prepdata(millis=None, vals=None):
+    #x = np.linspace(0.0, N*T, N, endpoint=False)
+    data_start=0 # Picking a smaller window to examine
+    data_end=-1 # Picking a smaller window to examine
+
+    # Let's calculate the sampling rate based on the full data
+    sam_per_sec = calc_sampling_rate(millis, time_units=1e-3)
+    print(f"Calculated avg sampling rate: {sam_per_sec} Hz")
+
+    # Window selection
+    ms=millis[data_start:data_end]
+    vv=vals[data_start:data_end]
+    #ms=millis
+    #vv=vals
+
+    # Convert to millivolts for proper medical scaling
+    vv_mv = np.array([adc_to_mv(v) for v in vv])
+
+    # Center the signal around 0mV
+    vv_mv = vv_mv - np.mean(vv_mv)
+
+    # Convert time to seconds for standard ECG scaling
+    time_sec = ms / 1000.0
+
+    # FFT analysis on the original values (keeping this for consistency)
+    ff = fft(vv)
+    #ff[len(ff)//2+1] = 0
+    # Our MCU code presently is trying to sample at 250Hz,
+    # but our calculated sampling rate ends up being less (248.x Hz)
+    # freqs = fftfreq(vv.shape[0], 1/250)
+
+    # Detect peaks
+    # distance is somewhat arbitrary, but wider is probably better for
+    # our use (finding the 60hz signal)
+    freqs = fftfreq(vv.shape[0], 1/sam_per_sec)
+    peak_distance = sam_per_sec/2
+    peaks, peakprops = find_peaks(ff.real, distance=peak_distance)
+    print("Peak count:", len(peaks))
+    #ff[50:700] = 0
+    #ff[0:2]=0
+    reval = np.fft.ifft(ff)
+
+    # Create figure with medical ECG aspect ratio
+    # Standard ECG paper: 25mm/sec horizontal, 10mm/mV vertical
+    fig, axs = plt.subplots(2, 1,
+                         figsize=(12, 8),
+                         gridspec_kw={'height_ratios': [3,1]})
+    fig.tight_layout()
+
+    # Calculate y-axis range in mV for proper scaling
+    y_range = max(abs(vv_mv.min()), abs(vv_mv.max())) * 1.2
+
+    # Set up grid lines for standard ECG paper look
+    # Major grid (5mm squares = 0.2 sec x 0.5mV)
+    axs[0].grid(which='major', linestyle='-', color=(1,0,0), linewidth=1)
+    # Minor grid (1mm squares = 0.04 sec x 0.1mV)
+    axs[0].grid(which='minor', linestyle='-', color=(1, 0.7, 0.7), linewidth=0.5)
+
+    # Set up ticks for standard ECG grid
+    # X-axis: major = 0.2 sec, minor = 0.04 sec
+    major_ticks_x = np.arange(time_sec.min(), time_sec.max(), 0.2)
+    minor_ticks_x = np.arange(time_sec.min(), time_sec.max(), 0.04)
+    # Y-axis: major = 0.5mV, minor = 0.1mV
+    major_ticks_y = np.arange(-y_range, y_range, 0.5)
+    minor_ticks_y = np.arange(-y_range, y_range, 0.1)
+
+    axs[0].set_xticks(major_ticks_x)
+    axs[0].set_xticks(minor_ticks_x, minor=True)
+    axs[0].set_yticks(major_ticks_y)
+    axs[0].set_yticks(minor_ticks_y, minor=True)
+
+    # Set labels
+    axs[0].set_xlabel('Time (seconds)')
+    axs[0].set_ylabel('Amplitude (mV)')
+    axs[0].set_title('ECG Recording (25mm/sec, 10mm/mV standard)')
+
+    # Mark 1-second intervals (25mm standard)
+    vlines = np.arange(time_sec.min(), time_sec.max(), 1.0)
+    axs[0].vlines(vlines, color=(.4, .4, .4), ymin=-y_range, ymax=y_range)
+
+    # Plot raw data if requested
+    if not args.noraw:
+        axs[0].plot(time_sec,
+                    vv_mv,
+                    label='ECG Data (mV)',
+                    linewidth=1,
+                    color=(.85, .85, 1)
+                )
+
+    # Apply highpass filter to remove baseline drift
+    vv_filtered = butter_highpass_filter(vv_mv, 1, sam_per_sec, order=5)
+
+    # Lowpass
+    # filtered = butter_lowpass_filter(vv, 45, sam_per_sec, order=5)
+    # axs[0].plot(ms, filtered, label='ECG Filtered')
+
+    # Working (but maybe causing notch filter ringing)
+
+    # TODO: Re-implement this high-pass filter:
+    # vv = butter_highpass_filter(vv, 1, sam_per_sec, order=5)
+
+    # axs[0].plot(ms,
+    #           vv,
+    #           label='Highpass 5',
+    #           linewidth=1)
+
+    # vv = butter_highpass_filter(vv, 10, sam_per_sec, order=5)
+    # axs[0].plot(ms,
+    #           vv,
+    #           label='Highpass 10',
+    #           linewidth=1)
+
+    # Plot FFT in lower subplot
+    ff[0]=0
+    axs[1].plot(freqs, ff.real, label='FFT')
+    #axs[1].plot(ff.real, label='FFT')
+    # axs[1].plot(reval.real, label='iFFT')
+
+    print("Frequencies:", freqs)
+    midfreqidx = len(freqs)//2 - 1
+    maxfreq = freqs[midfreqidx]
+    # \/ for labeling the axvline frequencies at the axis itself
+    trans = axs[1].get_xaxis_transform()
+    acfreqidx=None
+
+    # Identify and mark frequency peaks
+    for peakidx in peaks:
+        if freqs[peakidx] > 45 and freqs[peakidx] < 65: # our Hz
+            acfreqidx = peakidx
+            color=(.75,0,0)
+            width=4
+        else:
+            color=(0,.75,0)
+            width=2
+        axs[1].axvline(x=freqs[peakidx],
+                       color=color,
+                       linewidth=width,
+                       alpha=.20)
+        #print(f"Text at {freqs[peakidx]:.3f}")
+        axs[1].text(
+                freqs[peakidx], 0,
+                f"{freqs[peakidx]:.3f}",
+                transform=trans,
+                rotation=-75
+                )
+
+    # Calculate amplitude and print diagnostics
+    amplitude_maybe = (ff[acfreqidx].real / len(ff))*2 if acfreqidx is not None else 0
+    print("Max freq ?", freqs[midfreqidx-2: midfreqidx+2])
+    print("Max freq :", maxfreq)
+    print("Amplitude maybe:", amplitude_maybe)
+    print("Peak indices:", peaks)
+    print("Peaks frequencies:", [freqs[i] for i in peaks])
+
+    if acfreqidx is not None:
+        print("60Hz Freq: ff[acfreqidx]:", ff[acfreqidx])
+        phase60 = ff[acfreqidx].imag
+        print("60Hz Phase: ff[acfreqidx].imaj:", phase60)
+        print("60Hz Phase: ff[acfreqidx].imaj:", phase60 * np.pi / 180)
+
+    if acfreqidx is None:
+        print("*WARNING: Couldn't find AC frequency!")
+    else:
+        print(f"Found AC frequency peak at freqs idx [{acfreqidx}].")
+        print(f" Freq {freqs[acfreqidx]}.")
+        print(f" FFT amplitude {ff[acfreqidx]}.")
+        print(f" ")
+
+        # Apply and plot notch filters to remove power line interference
+        if not args.noautonotch:
+            filtered = notch(vv_filtered, freqs[acfreqidx], sam_per_sec, quality=10)
+            axs[0].plot(time_sec,
+                        filtered,
+                        label=f"Notch-Filtered +{freqs[acfreqidx]:.2f}Hz q10",
+                        linewidth=1)
+
+        filtered = notch(vv_filtered, 60, sam_per_sec, quality=10)
+        axs[0].plot(time_sec,
+                    filtered,
+                    label="1Hz Highpass + 60Hz Notch Filter",
+                    linewidth=1, color='black')
+
+    # # Good
+    # # 59,60,61 notch works well
+    # filtered = notch(vv, 59, sam_per_sec, quality=10)
+    # filtered = notch(filtered, 60, sam_per_sec, quality=10)
+    # filtered = notch(filtered, 61, sam_per_sec, quality=10)
+    # axs[0].plot(ms, filtered, label="Notch-Filtered 59,60,61 q10")
+
+    # filtered = bandstop(vv, 50, 65, fs=sam_per_sec, order=2)
+    # axs[0].plot(ms, filtered, label="Bandstop 50-65 o2")
+    # filtered = bandstop(vv, 50, 65, fs=sam_per_sec, order=10)
+    # axs[0].plot(ms, filtered, label="Bandstop 50-65 o10")
+
+    # Sine-wave 60Hz (detected = exact) removal:
+    # When generating sine wave, negate phase so we're offsetting it to match
+    # s60time, s60 = sine_wave_samps(f=freqs[acfreqidx], fs=sam_per_sec, totsamps=len(vv), phase=-phase60)
+    # axs[0].plot(ms, s60 * amplitude_maybe + 400, label="sin60")
+    # axs[0].plot(ms, (vv-(s60 * amplitude_maybe)), label="ECG-sin60")
+    # axs[0].axhline(y=400,
+    #              color=(0,0,1),
+    #              linewidth=1,
+    #              alpha=.30)
+
+    axs[0].legend()
+    axs[1].legend()
+    plt.grid()
+    # plt.ion()
+    plt.show(); plt.pause(0.05); plt.pause(0.05)
+    # ipdb.set_trace()
+    return
+
+def main():
+    millis, vals = proclog(args.file)
+    #prepdata(millis=millis, vals=vals)
+    prepdata(millis=millis, vals=vals)
+
+main()
+
+
