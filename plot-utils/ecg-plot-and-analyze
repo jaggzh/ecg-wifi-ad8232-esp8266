@@ -12,6 +12,7 @@ from scipy.signal import find_peaks, butter, lfilter, freqz, iirnotch, resample
 from signalgen import sine_wave_samps
 import argparse
 from scipy.signal import resample
+import matplotlib.patheffects as PathEffects
 
 argpa = argparse.ArgumentParser(
 		description='Plot ECG/EKG file. Line format: ms val\\n')
@@ -473,14 +474,16 @@ def plot_analysis(averaged_cycle, averaged_time, features, intervals):
 	
 	# Draw interval brackets
 	y_base = np.min(averaged_cycle) - (np.max(averaged_cycle) - np.min(averaged_cycle)) * 0.1
+	txt_offset = -10
 	
 	if 'P' in features and 'R' in features:
 		# PR interval
 		ax.plot([features['P']['time_ms'], features['R']['time_ms']], 
 		        [y_base, y_base], 'b-', linewidth=2)
 		mid_pr = (features['P']['time_ms'] + features['R']['time_ms']) / 2
-		ax.text(mid_pr, y_base - 20, f"PR: {intervals.get('PR_interval_ms', 0):.0f}ms",
+		txt = ax.text(mid_pr, y_base - txt_offset, f"PR: {intervals.get('PR_interval_ms', 0):.0f}ms",
 		        ha='center', fontsize=10, color='blue')
+		txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='white')])
 	
 	if 'Q' in features and 'S' in features:
 		# QRS duration
@@ -488,8 +491,10 @@ def plot_analysis(averaged_cycle, averaged_time, features, intervals):
 		ax.plot([features['Q']['time_ms'], features['S']['time_ms']], 
 		        [y_base2, y_base2], 'g-', linewidth=2)
 		mid_qrs = (features['Q']['time_ms'] + features['S']['time_ms']) / 2
-		ax.text(mid_qrs, y_base2 - 20, f"QRS: {intervals.get('QRS_duration_ms', 0):.0f}ms",
-		        ha='center', fontsize=10, color='green')
+		txt = ax.text(mid_qrs, y_base2 - txt_offset,
+		    f"QRS: {intervals.get('QRS_duration_ms', 0):.0f}ms",
+		    ha='center', fontsize=10, color='green')
+		txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='white')])
 	
 	if 'Q' in features and 'T' in features:
 		# QT interval
@@ -497,8 +502,9 @@ def plot_analysis(averaged_cycle, averaged_time, features, intervals):
 		ax.plot([features['Q']['time_ms'], features['T']['time_ms']], 
 		        [y_base3, y_base3], 'purple', linewidth=2)
 		mid_qt = (features['Q']['time_ms'] + features['T']['time_ms']) / 2
-		ax.text(mid_qt, y_base3 - 20, f"QT: {intervals.get('QT_interval_ms', 0):.0f}ms",
+		txt = ax.text(mid_qt, y_base3 - txt_offset, f"QT: {intervals.get('QT_interval_ms', 0):.0f}ms",
 		        ha='center', fontsize=10, color='purple')
+		txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='white')])
 	
 	ax.axvline(x=0, color='red', linestyle='--', alpha=0.3)
 	ax.set_xlabel('Time from R-peak (ms)', fontsize=12)
