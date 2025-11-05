@@ -786,7 +786,7 @@ def prepdata(millis=None, vals=None):
 					focus_percentage=args.focus_percent,
 					focus_time_s=calculated_focus_time_s,
 					max_cycles=args.max_cycles,
-					target_length_percentile=85, sample_rate=sam_per_sec)
+					target_length_percentile=5, sample_rate=sam_per_sec)
 				
 				print(f"   Averaged {len(selected_indices)} cycles")
 				
