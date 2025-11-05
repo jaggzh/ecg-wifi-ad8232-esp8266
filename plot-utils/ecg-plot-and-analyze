@@ -392,7 +392,6 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 	
 	return averaged_cycle, averaged_time, selected_indices, resampled_cycles, averaged_time
 
-
 def detect_pqrst_features(cycle, cycle_time, fs):
 	"""
 	Detect P, Q, R, S, T waves in an averaged cycle.
@@ -400,8 +399,16 @@ def detect_pqrst_features(cycle, cycle_time, fs):
 	"""
 	features = {}
 	
-	# R-peak is at time=0, find its index
-	r_idx = np.argmin(np.abs(cycle_time))
+	# R-peak: Find actual maximum near time=0 (within ±20ms window)
+	# Don't just use closest sample to time=0, find the true peak!
+	search_window_ms = 20
+	r_search_mask = (cycle_time >= -search_window_ms) & (cycle_time <= search_window_ms)
+	r_search_indices = np.where(r_search_mask)[0]
+	if len(r_search_indices) > 0:
+		r_idx = r_search_indices[np.argmax(cycle[r_search_indices])]
+	else:
+		# Fallback to closest to zero if search window fails
+		r_idx = np.argmin(np.abs(cycle_time))
 	features['R'] = {'idx': r_idx, 'time_ms': cycle_time[r_idx], 'amplitude': cycle[r_idx]}
 	
 	# Q wave: minimum before R (within 50ms)
