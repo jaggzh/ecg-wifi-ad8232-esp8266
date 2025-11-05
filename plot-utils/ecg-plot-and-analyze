@@ -1,0 +1,719 @@
+#!/usr/bin/env python3
+import ipdb
+from os import listdir
+from os.path import isfile, join
+import re
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
+from scipy.fft import fft, ifft, fftfreq
+from scipy import signal
+from scipy.signal import find_peaks, butter, lfilter, freqz, iirnotch
+from signalgen import sine_wave_samps
+import argparse
+
+argpa = argparse.ArgumentParser(
+		description='Plot ECG/EKG file. Line format: ms val\\n')
+argpa.add_argument("-f", "--file", required=True, help="Data filename")
+argpa.add_argument("-v", "--verbose", action='store_true', help="Verbose")
+argpa.add_argument("-N", "--noautonotch", action='store_true', help="Disable plot of auto-detected 50-60Hz EM noise.")
+argpa.add_argument("-R", "--noraw", action='store_true', help="Disable raw data plot")
+argpa.add_argument("--avg", action='store_true', help="Average heartbeat cycles for clean template")
+argpa.add_argument("-A", "--analyze", action='store_true', help="Analyze ECG features (implies --avg)")
+args = argpa.parse_args()
+
+# If analyze is requested, enable avg too
+if args.analyze:
+	args.avg = True
+
+print("Using logfile:", args.file)
+
+def proclog(fn=None):
+	millis = []  # millis
+	vals = []
+	f = open(args.file)
+	for line in f:
+		ms, val = line.strip().split(" ")
+		ms = float(ms)
+		val = float(val)
+		if val < 3 or val == 1024: pass
+		else:
+			# print(ms, "val:", val)
+			vals.append(val)
+			millis.append(ms)
+	return np.array(millis), np.array(vals)
+
+def calc_sampling_rate(timedata, time_units=None):
+	# Calculate average Hz of given times.
+	#  Example time_units:
+	#   time_units = .001 (or 1e-3) for millisecond data
+	#   time_units = .000001 (or 1e-6) for uS data
+	# 1. First we generate an array of the deltas (differences in time)
+	aa = [timedata[i+1] - float(timedata[i]) for i in range(len(timedata)-1)]
+	#print([a for a in enumerate(aa)])
+	avg = sum(aa)/len(aa)
+	# 2. Filter outliers
+	#  (These exist because of jumps in the sampling data that we
+	#  got when removing invalid sensor data, like a lot of 2s and
+	#  1024s we got from moving around or disconnecting the electrodes)
+	aa = [x for x in aa if (abs(x-avg)/avg) < 1.5]
+	# 3. Recalculate avg
+	avg = sum(aa)/len(aa)
+	sam_per_sec = (1/time_units) / avg
+	return sam_per_sec
+
+def butter_highpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = signal.butter(order, normal_cutoff, btype='high', analog=False)
+    return b, a
+
+def butter_highpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_highpass(cutoff, fs, order=order)
+    y = signal.filtfilt(b, a, data)
+    return y
+
+def butter_lowpass(cutoff, fs, order=5):
+    return butter(order, cutoff, fs=fs, btype='low', analog=False)
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def notch(data, f, fs=None, quality=30):
+	notch_num, notch_den = iirnotch(f, quality, fs=fs)
+	return lfilter(notch_num, notch_den, data)
+
+def bandstop(data, lowcut, highcut, fs=None, order=2):
+	nyq = 0.5 * fs
+	low = lowcut / nyq
+	high = highcut / nyq
+
+	i, u = butter(order, [low, high], btype='bandstop')
+	y = lfilter(i, u, data)
+	return y
+
+def detect_r_peaks(data, fs, min_distance_ms=300):
+	"""
+	Detect R-peaks (QRS complexes) in ECG data.
+	min_distance_ms: minimum time between peaks (prevents double-detection)
+	"""
+	# Convert min distance from ms to samples
+	min_distance_samples = int((min_distance_ms / 1000.0) * fs)
+	
+	# Use robust peak detection
+	# Height threshold: use a percentage of the signal range
+	signal_range = np.max(data) - np.min(data)
+	height_threshold = np.min(data) + signal_range * 0.3  # 30% above minimum
+	
+	peaks, properties = find_peaks(data, 
+	                                height=height_threshold,
+	                                distance=min_distance_samples,
+	                                prominence=signal_range * 0.15)
+	
+	return peaks
+
+def extract_cycles(data, ms, r_peaks, fs, pre_ms=300, post_ms=700):
+	"""
+	Extract individual heartbeat cycles centered on R-peaks.
+	pre_ms: milliseconds before R-peak to include
+	post_ms: milliseconds after R-peak to include
+	"""
+	pre_samples = int((pre_ms / 1000.0) * fs)
+	post_samples = int((post_ms / 1000.0) * fs)
+	
+	cycles = []
+	cycle_times = []
+	cycle_indices = []
+	
+	for i, peak_idx in enumerate(r_peaks):
+		start_idx = peak_idx - pre_samples
+		end_idx = peak_idx + post_samples
+		
+		# Make sure we're within bounds
+		if start_idx >= 0 and end_idx < len(data):
+			cycle_data = data[start_idx:end_idx]
+			cycle_time = ms[start_idx:end_idx] - ms[peak_idx]  # Normalize time to R-peak
+			cycles.append(cycle_data)
+			cycle_times.append(cycle_time)
+			cycle_indices.append(i)
+	
+	return cycles, cycle_times, cycle_indices
+
+def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
+	"""
+	Reject physiologically impossible or artifact-corrupted cycles.
+	Returns indices of good cycles and rejection reasons for bad ones.
+	"""
+	if len(cycles) == 0:
+		return [], {}
+	
+	good_indices = []
+	rejection_reasons = {}
+	
+	# Calculate RR intervals (beat-to-beat timing)
+	rr_intervals = []
+	if len(r_peaks) > 1:
+		for i in range(len(r_peaks) - 1):
+			rr_interval = ms[r_peaks[i+1]] - ms[r_peaks[i]]
+			rr_intervals.append(rr_interval)
+	
+	# Calculate median amplitude for comparison
+	amplitudes = [np.max(cycle) - np.min(cycle) for cycle in cycles]
+	median_amplitude = np.median(amplitudes)
+	
+	for i, cycle in enumerate(cycles):
+		reasons = []
+		
+		# Check 1: RR interval (if not first or last beat)
+		if i > 0 and i < len(rr_intervals):
+			rr = rr_intervals[i-1]
+			if rr < 300 or rr > 2000:  # 30-200 bpm range
+				reasons.append(f"RR interval {rr:.0f}ms out of range (300-2000ms)")
+		
+		# Check 2: Amplitude
+		amplitude = np.max(cycle) - np.min(cycle)
+		if amplitude < median_amplitude * 0.2:
+			reasons.append(f"Amplitude too low ({amplitude:.1f} < {median_amplitude*0.2:.1f})")
+		elif amplitude > median_amplitude * 5.0:
+			reasons.append(f"Amplitude too high ({amplitude:.1f} > {median_amplitude*5:.1f})")
+		
+		# Check 3: Baseline stability (check for massive shifts)
+		# Look at first and last 50ms (baseline sections)
+		baseline_samples = int(0.05 * fs)  # 50ms
+		if len(cycle) > 2 * baseline_samples:
+			baseline_start = np.mean(cycle[:baseline_samples])
+			baseline_end = np.mean(cycle[-baseline_samples:])
+			baseline_shift = abs(baseline_end - baseline_start)
+			if baseline_shift > amplitude * 0.5:  # More than 50% of signal amplitude
+				reasons.append(f"Excessive baseline shift ({baseline_shift:.1f})")
+		
+		# Check 4: NaN or infinite values
+		if np.any(np.isnan(cycle)) or np.any(np.isinf(cycle)):
+			reasons.append("Contains NaN or Inf values")
+		
+		if len(reasons) == 0:
+			good_indices.append(i)
+		else:
+			rejection_reasons[i] = reasons
+	
+	return good_indices, rejection_reasons
+
+def average_cycles(cycles, cycle_times):
+	"""
+	Average multiple heartbeat cycles.
+	Simple alignment on R-peak (already done in extraction).
+	"""
+	if len(cycles) == 0:
+		return None, None
+	
+	# Find the shortest cycle to determine output length
+	min_length = min(len(c) for c in cycles)
+	
+	# Truncate all cycles to same length and stack
+	truncated_cycles = np.array([c[:min_length] for c in cycles])
+	
+	# Average
+	averaged_cycle = np.mean(truncated_cycles, axis=0)
+	averaged_time = cycle_times[0][:min_length]  # Use first cycle's time base
+	
+	return averaged_cycle, averaged_time
+
+def detect_pqrst_features(cycle, cycle_time, fs):
+	"""
+	Detect P, Q, R, S, T waves in an averaged cycle.
+	Returns dictionary of feature locations (in samples and ms).
+	"""
+	features = {}
+	
+	# R-peak is at time=0, find its index
+	r_idx = np.argmin(np.abs(cycle_time))
+	features['R'] = {'idx': r_idx, 'time_ms': cycle_time[r_idx], 'amplitude': cycle[r_idx]}
+	
+	# Q wave: minimum before R (within 50ms)
+	search_samples = int(0.05 * fs)
+	q_search_start = max(0, r_idx - search_samples)
+	q_idx = q_search_start + np.argmin(cycle[q_search_start:r_idx])
+	features['Q'] = {'idx': q_idx, 'time_ms': cycle_time[q_idx], 'amplitude': cycle[q_idx]}
+	
+	# S wave: minimum after R (within 50ms)
+	s_search_end = min(len(cycle), r_idx + search_samples)
+	s_idx = r_idx + np.argmin(cycle[r_idx:s_search_end])
+	features['S'] = {'idx': s_idx, 'time_ms': cycle_time[s_idx], 'amplitude': cycle[s_idx]}
+	
+	# T wave: maximum after S (search 150-400ms after R)
+	t_search_start = r_idx + int(0.15 * fs)
+	t_search_end = min(len(cycle), r_idx + int(0.4 * fs))
+	if t_search_start < len(cycle) and t_search_end > t_search_start:
+		t_idx = t_search_start + np.argmax(cycle[t_search_start:t_search_end])
+		features['T'] = {'idx': t_idx, 'time_ms': cycle_time[t_idx], 'amplitude': cycle[t_idx]}
+	
+	# P wave: small peak before Q (search 50-200ms before R)
+	p_search_start = max(0, r_idx - int(0.2 * fs))
+	p_search_end = max(0, r_idx - int(0.05 * fs))
+	if p_search_end > p_search_start:
+		# P wave is subtle, look for local maximum
+		p_region = cycle[p_search_start:p_search_end]
+		if len(p_region) > 0:
+			p_idx = p_search_start + np.argmax(p_region)
+			features['P'] = {'idx': p_idx, 'time_ms': cycle_time[p_idx], 'amplitude': cycle[p_idx]}
+	
+	return features
+
+def calculate_intervals(features, rr_interval_ms=None):
+	"""
+	Calculate ECG intervals from detected features.
+	"""
+	intervals = {}
+	
+	if rr_interval_ms:
+		intervals['RR_interval_ms'] = rr_interval_ms
+		intervals['Heart_rate_bpm'] = 60000 / rr_interval_ms
+	
+	if 'P' in features and 'R' in features:
+		intervals['PR_interval_ms'] = features['R']['time_ms'] - features['P']['time_ms']
+	
+	if 'Q' in features and 'S' in features:
+		intervals['QRS_duration_ms'] = features['S']['time_ms'] - features['Q']['time_ms']
+	
+	if 'Q' in features and 'T' in features:
+		intervals['QT_interval_ms'] = features['T']['time_ms'] - features['Q']['time_ms']
+		# Bazett's formula for QTc (corrected QT)
+		if rr_interval_ms:
+			intervals['QTc_ms'] = intervals['QT_interval_ms'] / np.sqrt(rr_interval_ms / 1000.0)
+	
+	return intervals
+
+def plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, good_indices):
+	"""
+	Plot individual cycles (transparent) and averaged cycle (bold).
+	"""
+	fig, ax = plt.subplots(figsize=(12, 6))
+	
+	# Plot individual good cycles (transparent)
+	for i in good_indices:
+		ax.plot(cycle_times[i], cycles[i], 
+		        color=(0.7, 0.7, 0.7), alpha=0.3, linewidth=0.5)
+	
+	# Plot averaged cycle (bold)
+	ax.plot(averaged_time, averaged_cycle, 
+	        color=(0, 0.5, 0), linewidth=3, label='Averaged Cycle')
+	
+	ax.axvline(x=0, color='red', linestyle='--', alpha=0.5, label='R-peak')
+	ax.set_xlabel('Time from R-peak (ms)')
+	ax.set_ylabel('Amplitude')
+	ax.set_title(f'Averaged Heartbeat Cycle (n={len(good_indices)} cycles)')
+	ax.legend()
+	ax.grid(True, alpha=0.3)
+	
+	return fig
+
+def plot_analysis(averaged_cycle, averaged_time, features, intervals):
+	"""
+	Plot annotated ECG with detected features and intervals.
+	"""
+	fig, ax = plt.subplots(figsize=(14, 8))
+	
+	# Plot the averaged cycle
+	ax.plot(averaged_time, averaged_cycle, 
+	        color='black', linewidth=2, label='Averaged ECG')
+	
+	# Mark detected features
+	colors = {'P': 'blue', 'Q': 'green', 'R': 'red', 'S': 'orange', 'T': 'purple'}
+	for wave_name, feature in features.items():
+		color = colors.get(wave_name, 'gray')
+		ax.plot(feature['time_ms'], feature['amplitude'], 
+		        'o', color=color, markersize=10, label=f'{wave_name} wave')
+		ax.annotate(wave_name, 
+		           xy=(feature['time_ms'], feature['amplitude']),
+		           xytext=(0, 15), textcoords='offset points',
+		           ha='center', fontsize=12, fontweight='bold',
+		           color=color)
+	
+	# Draw interval brackets
+	y_base = np.min(averaged_cycle) - (np.max(averaged_cycle) - np.min(averaged_cycle)) * 0.1
+	
+	if 'P' in features and 'R' in features:
+		# PR interval
+		ax.plot([features['P']['time_ms'], features['R']['time_ms']], 
+		        [y_base, y_base], 'b-', linewidth=2)
+		mid_pr = (features['P']['time_ms'] + features['R']['time_ms']) / 2
+		ax.text(mid_pr, y_base - 20, f"PR: {intervals.get('PR_interval_ms', 0):.0f}ms",
+		        ha='center', fontsize=10, color='blue')
+	
+	if 'Q' in features and 'S' in features:
+		# QRS duration
+		y_base2 = y_base - 50
+		ax.plot([features['Q']['time_ms'], features['S']['time_ms']], 
+		        [y_base2, y_base2], 'g-', linewidth=2)
+		mid_qrs = (features['Q']['time_ms'] + features['S']['time_ms']) / 2
+		ax.text(mid_qrs, y_base2 - 20, f"QRS: {intervals.get('QRS_duration_ms', 0):.0f}ms",
+		        ha='center', fontsize=10, color='green')
+	
+	if 'Q' in features and 'T' in features:
+		# QT interval
+		y_base3 = y_base - 100
+		ax.plot([features['Q']['time_ms'], features['T']['time_ms']], 
+		        [y_base3, y_base3], 'purple', linewidth=2)
+		mid_qt = (features['Q']['time_ms'] + features['T']['time_ms']) / 2
+		ax.text(mid_qt, y_base3 - 20, f"QT: {intervals.get('QT_interval_ms', 0):.0f}ms",
+		        ha='center', fontsize=10, color='purple')
+	
+	ax.axvline(x=0, color='red', linestyle='--', alpha=0.3)
+	ax.set_xlabel('Time from R-peak (ms)', fontsize=12)
+	ax.set_ylabel('Amplitude', fontsize=12)
+	ax.set_title('ECG Analysis - Detected Features and Intervals', fontsize=14, fontweight='bold')
+	ax.legend(loc='upper right')
+	ax.grid(True, alpha=0.3)
+	
+	return fig
+
+def print_analysis(features, intervals, total_cycles, good_cycles, rejection_reasons):
+	"""
+	Print educational analysis of the ECG.
+	"""
+	print("\n" + "="*70)
+	print("ECG ANALYSIS RESULTS")
+	print("="*70)
+	
+	# Cycle statistics
+	print(f"\n📊 CYCLE STATISTICS:")
+	print(f"   Total cycles detected: {total_cycles}")
+	print(f"   Good quality cycles: {good_cycles} ({100*good_cycles/total_cycles:.1f}%)")
+	print(f"   Rejected cycles: {total_cycles - good_cycles} ({100*(total_cycles-good_cycles)/total_cycles:.1f}%)")
+	
+	if len(rejection_reasons) > 0 and args.verbose:
+		print(f"\n   Rejection reasons:")
+		for idx, reasons in list(rejection_reasons.items())[:5]:  # Show first 5
+			print(f"     Cycle {idx}: {', '.join(reasons)}")
+		if len(rejection_reasons) > 5:
+			print(f"     ... and {len(rejection_reasons)-5} more")
+	
+	# Heart rate
+	if 'Heart_rate_bpm' in intervals:
+		hr = intervals['Heart_rate_bpm']
+		print(f"\n💓 HEART RATE: {hr:.1f} bpm")
+		if hr < 60:
+			print(f"   → Bradycardia (slow heart rate)")
+		elif hr > 100:
+			print(f"   → Tachycardia (fast heart rate)")
+		else:
+			print(f"   → Normal sinus rhythm")
+	
+	# Detected waves
+	print(f"\n🌊 DETECTED WAVES:")
+	wave_descriptions = {
+		'P': 'Atrial depolarization (atria contract)',
+		'Q': 'Start of ventricular depolarization',
+		'R': 'Peak of ventricular depolarization (main heartbeat)',
+		'S': 'End of ventricular depolarization',
+		'T': 'Ventricular repolarization (ventricles reset)'
+	}
+	
+	for wave in ['P', 'Q', 'R', 'S', 'T']:
+		if wave in features:
+			print(f"   {wave} wave: {features[wave]['time_ms']:+.1f}ms, amplitude={features[wave]['amplitude']:.1f}")
+			print(f"      → {wave_descriptions[wave]}")
+		else:
+			print(f"   {wave} wave: Not detected")
+	
+	# Intervals
+	print(f"\n📏 INTERVALS:")
+	
+	if 'PR_interval_ms' in intervals:
+		pr = intervals['PR_interval_ms']
+		print(f"   PR interval: {pr:.0f}ms")
+		if pr < 120:
+			print(f"      → Short (possible pre-excitation)")
+		elif pr > 200:
+			print(f"      → Prolonged (possible AV block)")
+		else:
+			print(f"      → Normal (120-200ms)")
+		print(f"      → Time from atrial to ventricular activation")
+	
+	if 'QRS_duration_ms' in intervals:
+		qrs = intervals['QRS_duration_ms']
+		print(f"   QRS duration: {qrs:.0f}ms")
+		if qrs < 80:
+			print(f"      → Narrow (normal conduction)")
+		elif qrs > 120:
+			print(f"      → Wide (possible bundle branch block)")
+		else:
+			print(f"      → Normal (80-120ms)")
+		print(f"      → Ventricular depolarization time")
+	
+	if 'QT_interval_ms' in intervals:
+		qt = intervals['QT_interval_ms']
+		qtc = intervals.get('QTc_ms', 0)
+		print(f"   QT interval: {qt:.0f}ms (corrected: {qtc:.0f}ms)")
+		if qtc > 450:
+			print(f"      → Prolonged (risk of arrhythmia)")
+		elif qtc < 350:
+			print(f"      → Short")
+		else:
+			print(f"      → Normal (350-450ms)")
+		print(f"      → Total ventricular activity time")
+	
+	print("\n" + "="*70)
+	print("⚠️  NOTE: This is for educational purposes only.")
+	print("    Consult a healthcare professional for medical interpretation.")
+	print("="*70 + "\n")
+
+def prepdata(millis=None, vals=None):
+	#x = np.linspace(0.0, N*T, N, endpoint=False)
+	data_start=0 # Picking a smaller window to examine
+	data_end=-1 # Picking a smaller window to examine
+
+	# Let's calculate the sampling rate based on the full data
+	sam_per_sec = calc_sampling_rate(millis, time_units=1e-3)
+	print(f"Calculated avg sampling rate: {sam_per_sec} Hz")
+	ms=millis[data_start:data_end]
+	vv=vals[data_start:data_end]
+	#ms=millis
+	#vv=vals
+	ff = fft(vv)
+	#ff[len(ff)//2+1] = 0
+	# Our MCU code presently is trying to sample at 250Hz,
+	# but our calculated sampling rate ends up being less (248.x Hz)
+	# freqs = fftfreq(vv.shape[0], 1/250)
+
+	# Detect peaks
+	# distance is somewhat arbitrary, but wider is probably better for
+	# our use (finding the 60hz signal)
+	freqs = fftfreq(vv.shape[0], 1/sam_per_sec)
+	peak_distance = sam_per_sec/2
+	peaks, peakprops = find_peaks(ff.real, distance=peak_distance)
+	print("Peak count:", len(peaks))
+	#ff[50:700] = 0
+	#ff[0:2]=0
+	reval = np.fft.ifft(ff)
+	
+	# Check if we should do averaging/analysis
+	if args.avg or args.analyze:
+		print("\n" + "="*70)
+		print("PERFORMING CYCLE ANALYSIS")
+		print("="*70)
+		
+		# Prepare filtered signal for R-peak detection
+		vv_clean = vv - np.average(vv)
+		vv_clean = butter_highpass_filter(vv_clean, 1, sam_per_sec, order=5)
+		vv_clean = notch(vv_clean, 60, sam_per_sec, quality=10)
+		
+		# Detect R-peaks
+		r_peaks = detect_r_peaks(vv_clean, sam_per_sec)
+		print(f"Detected {len(r_peaks)} R-peaks (heartbeats)")
+		
+		if len(r_peaks) < 2:
+			print("⚠️  Not enough heartbeats detected for analysis!")
+		else:
+			# Extract cycles
+			cycles, cycle_times, cycle_indices = extract_cycles(vv_clean, ms, r_peaks, sam_per_sec)
+			print(f"Extracted {len(cycles)} complete cycles")
+			
+			# Reject artifacts
+			good_indices, rejection_reasons = reject_artifacts(cycles, cycle_times, r_peaks, ms, sam_per_sec)
+			print(f"Quality control: {len(good_indices)} good cycles, {len(rejection_reasons)} rejected")
+			
+			if len(good_indices) < 1:
+				print("⚠️  No good quality cycles after artifact rejection!")
+			else:
+				# Calculate cycle duration statistics
+				if len(r_peaks) > 1:
+					rr_intervals = []
+					for i in range(len(r_peaks) - 1):
+						rr = ms[r_peaks[i+1]] - ms[r_peaks[i]]
+						rr_intervals.append(rr)
+					rr_intervals = np.array(rr_intervals)
+					
+					print(f"\n📊 RR Interval Statistics:")
+					print(f"   Mean: {np.mean(rr_intervals):.1f}ms (HR: {60000/np.mean(rr_intervals):.1f} bpm)")
+					print(f"   Std Dev: {np.std(rr_intervals):.1f}ms")
+					print(f"   Range: {np.min(rr_intervals):.1f} - {np.max(rr_intervals):.1f}ms")
+					print(f"   Coefficient of Variation: {100*np.std(rr_intervals)/np.mean(rr_intervals):.1f}%")
+				
+				# Average good cycles
+				good_cycles = [cycles[i] for i in good_indices]
+				good_cycle_times = [cycle_times[i] for i in good_indices]
+				averaged_cycle, averaged_time = average_cycles(good_cycles, good_cycle_times)
+				
+				# Plot averaged cycles
+				plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, good_indices)
+				
+				# If analyze flag, do full feature detection
+				if args.analyze:
+					print("\n" + "="*70)
+					print("DETECTING ECG FEATURES")
+					print("="*70)
+					
+					features = detect_pqrst_features(averaged_cycle, averaged_time, sam_per_sec)
+					
+					# Calculate intervals
+					avg_rr = np.mean(rr_intervals) if len(r_peaks) > 1 else None
+					intervals = calculate_intervals(features, avg_rr)
+					
+					# Print analysis
+					print_analysis(features, intervals, len(cycles), len(good_indices), rejection_reasons)
+					
+					# Plot annotated analysis
+					plot_analysis(averaged_cycle, averaged_time, features, intervals)
+	
+	# Original plotting code continues...
+	fig, axs = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3,1]})
+	fig.tight_layout()
+	vv = vv-np.average(vv)
+	axs[0].set_xticks(np.arange(ms.min(),ms.max(),200))
+	axs[0].minorticks_on()
+	axs[0].xaxis.set_minor_locator(AutoMinorLocator(5))
+
+	axs[0].grid(which='major', linestyle='-', color=(1,0,0), linewidth='1')
+	axs[0].grid(which='minor', linestyle='-', color=(1, 0.7, 0.7), linewidth='.75')
+
+	vlines = np.arange(ms.min(),ms.max(),1000*60)
+	axs[0].vlines(vlines, color=(.4, .4, .4), ymin=vv.min(), ymax=vv.max())
+
+	if not args.noraw:
+		axs[0].plot(ms,
+					vv,
+					label='ECG Data (Raw)',
+					linewidth=1,
+					color=(.85, .85, 1)
+					# color=(1, 0, 1)
+				)
+
+	# Lowpass
+	# filtered = butter_lowpass_filter(vv, 45, sam_per_sec, order=5)
+	# axs[0].plot(ms, filtered, label='ECG Filtered')
+
+	# Working (but maybe causing notch filter ringing)
+	vv = butter_highpass_filter(vv, 1, sam_per_sec, order=5)
+	# axs[0].plot(ms,
+	# 			vv,
+	# 			label='Highpass 5',
+	# 			linewidth=1)
+
+	# vv = butter_highpass_filter(vv, 10, sam_per_sec, order=5)
+	# axs[0].plot(ms,
+	# 			vv,
+	# 			label='Highpass 10',
+	# 			linewidth=1)
+
+	ff[0]=0
+	axs[1].plot(freqs, ff.real, label='FFT')
+	#axs[1].plot(ff.real, label='FFT')
+	# axs[1].plot(reval.real, label='iFFT')
+	print("Frequencies:", freqs)
+	midfreqidx = len(freqs)//2 - 1
+	maxfreq = freqs[midfreqidx]
+	# \/ for labeling the axvline frequencies at the axis itself
+	trans = axs[1].get_xaxis_transform()
+	acfreqidx=None
+	for peakidx in peaks:
+		if freqs[peakidx] > 45 and freqs[peakidx] < 65: # our Hz
+			acfreqidx = peakidx
+			color=(.75,0,0)
+			width=4
+		else:
+			color=(0,.75,0)
+			width=2
+		axs[1].axvline(x=freqs[peakidx],
+		               color=color,
+		               linewidth=width,
+		               alpha=.20)
+		#print(f"Text at {freqs[peakidx]:.3f}")
+		axs[1].text(
+		        freqs[peakidx], 0,
+				f"{freqs[peakidx]:.3f}",
+				transform=trans,
+				rotation=-75
+				)
+	amplitude_maybe = (ff[acfreqidx].real / len(ff))*2
+	print("Max freq ?", freqs[midfreqidx-2: midfreqidx+2])
+	print("Max freq :", maxfreq)
+	print("Amplitude maybe:", amplitude_maybe)
+	print("Peak indices:", peaks)
+	print("Peaks frequencies:", [freqs[i] for i in peaks])
+	print("60Hz Freq: ff[acfreqidx]:", ff[acfreqidx])
+	phase60 = ff[acfreqidx].imag
+	print("60Hz Phase: ff[acfreqidx].imaj:", phase60)
+	print("60Hz Phase: ff[acfreqidx].imaj:", phase60 * np.pi / 180)
+	if acfreqidx is None:
+		print("*WARNING: Couldn't find AC frequency!")
+	else:
+		print(f"Found AC frequency peak at freqs idx [{acfreqidx}].")
+		print(f" Freq {freqs[acfreqidx]}.")
+		print(f" FFT amplitude {ff[acfreqidx]}.")
+		print(f" ")
+
+		# Notch filter
+		if not args.noautonotch:
+			filtered = notch(vv, freqs[acfreqidx], sam_per_sec, quality=10)
+			axs[0].plot(ms,
+						filtered,
+						label=f"Notch-Filtered +{freqs[acfreqidx]:.2f}Hz q10",
+						linewidth=5,
+			            color='black',
+			   )
+		filtered = notch(vv, 60, sam_per_sec, quality=10)
+		axs[0].plot(ms,
+		            filtered,
+		            label="1Hz Highpass + 60Hz Notch Filter",
+		            linewidth=1,
+                    color=(.9, 0.9, 1.0),
+              )
+
+	# # Good
+	# # 59,60,61 notch works well
+	# filtered = notch(vv, 59, sam_per_sec, quality=10)
+	# filtered = notch(filtered, 60, sam_per_sec, quality=10)
+	# filtered = notch(filtered, 61, sam_per_sec, quality=10)
+	# axs[0].plot(ms, filtered, label="Notch-Filtered 59,60,61 q10")
+	
+	# More aggressive bandstop filters - try these!
+	# Option 1: Tighter bandstop 59-63 Hz with moderate order
+	filtered_bs1 = bandstop(vv, 59, 63, fs=sam_per_sec, order=5)
+	axs[0].plot(ms, filtered_bs1, label="Bandstop 59-63Hz o5", linewidth=1.5, color=(0, 0.7, 0))
+	
+	# # Option 2: Multiple sequential notch filters for surgical removal
+	# filtered_multi = notch(vv, 59, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 60, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 61, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 62, sam_per_sec, quality=10)
+	# axs[0].plot(ms, filtered_multi, label="Multi-notch 59-62Hz q10", linewidth=1.5, color=(0.7, 0, 0.7))
+	
+	# # Option 3: Bandstop with higher order for sharper cutoff
+	# filtered_bs2 = bandstop(vv, 58, 63, fs=sam_per_sec, order=8)
+	# axs[0].plot(ms, filtered_bs2, label="Bandstop 58-63Hz o8", linewidth=1.5, color=(0, 0.5, 0.7))
+
+
+	# filtered = bandstop(vv, 50, 65, fs=sam_per_sec, order=2)
+	# axs[0].plot(ms, filtered, label="Bandstop 50-65 o2")
+	# filtered = bandstop(vv, 50, 65, fs=sam_per_sec, order=10)
+	# axs[0].plot(ms, filtered, label="Bandstop 50-65 o10")
+
+	# Sine-wave 60Hz (detected = exact) removal:
+	# When generating sine wave, negate phase so we're offsetting it to match
+	# s60time, s60 = sine_wave_samps(f=freqs[acfreqidx], fs=sam_per_sec, totsamps=len(vv), phase=-phase60)
+	# axs[0].plot(ms, s60 * amplitude_maybe + 400, label="sin60")
+	# axs[0].plot(ms, (vv-(s60 * amplitude_maybe)), label="ECG-sin60")
+	# axs[0].axhline(y=400,
+	# 			   color=(0,0,1),
+	# 			   linewidth=1,
+	# 			   alpha=.30)
+
+	axs[0].legend()
+	axs[1].legend()
+	plt.grid()
+	# plt.ion()
+	plt.show(); plt.pause(0.05); plt.pause(0.05)
+	# ipdb.set_trace()
+	return
+
+def main():
+	millis, vals = proclog(args.file)
+	#prepdata(millis=millis, vals=vals)
+	prepdata(millis=millis, vals=vals)
+
+main()
+
+
