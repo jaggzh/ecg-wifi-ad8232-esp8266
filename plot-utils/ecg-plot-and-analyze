@@ -23,6 +23,9 @@ argpa.add_argument("--avg", action='store_true', help="Average heartbeat cycles 
 argpa.add_argument("-A", "--analyze", action='store_true', help="Analyze ECG features (implies --avg)")
 argpa.add_argument("--no-avg-plot-resampled", action='store_true', help="Don't plot resampled cycles in average plot")
 argpa.add_argument("--no-avg-plot-selected", action='store_true', help="Don't plot original selected cycles in average plot")
+argpa.add_argument("--focus-time", type=float, default=None, help="Focus averaging on cycles near this time (seconds from start)")
+argpa.add_argument("--focus-percent", type=float, default=None, help="Focus averaging on cycles near this percentage (0-100) of recording")
+argpa.add_argument("--max-cycles", type=int, default=30, help="Maximum number of cycles to include in average (default: 30)")
 args = argpa.parse_args()
 
 # If analyze is requested, enable avg too
@@ -674,9 +677,12 @@ def prepdata(millis=None, vals=None):
 				good_cycle_times = [cycle_times[i] for i in good_indices]
 				r_peak_times_ms = ms[r_peaks][np.array(good_indices)]
 				
+				# Use CLI arguments for focus and max_cycles
 				averaged_cycle, averaged_time, selected_indices, resampled_cycles, resampled_time = average_cycles(
 					good_cycles, good_cycle_times, r_peak_times_ms,
-                    focus_percentage=.4, focus_time_s=None, max_cycles=30,
+					focus_percentage=args.focus_percent,
+					focus_time_s=args.focus_time,
+					max_cycles=args.max_cycles,
 					target_length_percentile=85, sample_rate=sam_per_sec)
 				
 				print(f"   Averaged {len(selected_indices)} cycles")
