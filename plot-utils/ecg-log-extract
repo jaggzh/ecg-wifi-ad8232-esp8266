@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+
+import argparse
+import re
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+
+def parse_duration(duration_str):
+    """Parse duration string like '5m', '30s', '1.5h', 'hh:mm', 'hh:mm:ss' into seconds"""
+    if ':' in duration_str:
+        # hh:mm or hh:mm:ss format
+        parts = duration_str.split(':')
+        if len(parts) == 2:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60
+        elif len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        else:
+            raise ValueError(f"Invalid time format: {duration_str}")
+    
+    # Duration with unit suffix
+    match = re.match(r'^([\d.]+)([smh])$', duration_str)
+    if match:
+        value = float(match.group(1))
+        unit = match.group(2)
+        if unit == 's':
+            return value
+        elif unit == 'm':
+            return value * 60
+        elif unit == 'h':
+            return value * 3600
+    
+    raise ValueError(f"Invalid duration format: {duration_str}")
+
+
+def parse_time(time_str, base_date):
+    """Parse time string into datetime object"""
+    # Full timestamp: yyyy-mm-dd--HH:MM
+    if '--' in time_str:
+        # Strip AM/PM if present (we ignore it)
+        time_str = re.sub(r'[AP]M$', '', time_str, flags=re.IGNORECASE)
+        return datetime.strptime(time_str, '%Y-%m-%d--%H:%M')
+    
+    # hh:mm or hh:mm:ss
+    if ':' in time_str:
+        parts = time_str.split(':')
+        if len(parts) == 2:
+            hour = int(parts[0])
+            minute = int(parts[1])
+            return base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        elif len(parts) == 3:
+            hour = int(parts[0])
+            minute = int(parts[1])
+            second = int(parts[2])
+            return base_date.replace(hour=hour, minute=minute, second=second, microsecond=0)
+    
+    raise ValueError(f"Invalid time format: {time_str}")
+
+
+def parse_filename(filename):
+    """Parse filename to extract date, time, and optional tag"""
+    # Get basename without extension
+    name = Path(filename).stem
+    
+    # Pattern: yyyy-mm-dd--HH:MM[AM/PM][--tag...]
+    # The tag can be anything after the time
+    match = re.match(r'^(\d{4}-\d{2}-\d{2})--(\d{1,2}):(\d{2})(?:[AP]M)?(--.*)?$', name)
+    if not match:
+        raise ValueError(f"Invalid filename format: {filename}")
+    
+    date_str = match.group(1)
+    hour = int(match.group(2))
+    minute = int(match.group(3))
+    tag = match.group(4) or ''  # Everything after time, including the --
+    
+    dt = datetime.strptime(f"{date_str} {hour:02d}:{minute:02d}", '%Y-%m-%d %H:%M')
+    return dt, tag
+
+
+def format_duration(seconds):
+    """Format seconds as hh:mm:ss"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def read_ecg_file(filepath):
+    """Read ECG file and return list of (millis, value) tuples, ignoring last line"""
+    data = []
+    bad_lines = []
+    
+    with open(filepath, 'r') as f:
+        lines = f.readlines()
+    
+    if not lines:
+        return data, bad_lines
+    
+    # Always ignore last line
+    lines = lines[:-1]
+    
+    for i, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line:
+            continue
+        
+        parts = line.split()
+        if len(parts) != 2:
+            bad_lines.append((i, line))
+            continue
+        
+        try:
+            millis = int(parts[0])
+            value = int(parts[1])
+            data.append((millis, value))
+        except ValueError:
+            bad_lines.append((i, line))
+    
+    return data, bad_lines
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Extract time range from ECG log files',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument('-i', '--input', required=True, help='Input filename')
+    parser.add_argument('--time', help='Center time for extraction')
+    parser.add_argument('--margin', help='Margin around center time (e.g., 5m, 30s)')
+    parser.add_argument('--range', help='Total range divided by 2 around center (e.g., 20m)')
+    parser.add_argument('--start', help='Start time')
+    parser.add_argument('--end', help='End time')
+    parser.add_argument('-N', '--not-dry', action='store_true', 
+                       help='Actually write the file (default is dry-run)')
+    parser.add_argument('--force', action='store_true', 
+                       help='Force overwrite existing file')
+    
+    args = parser.parse_args()
+    
+    # Parse input filename
+    try:
+        base_datetime, original_tag = parse_filename(args.input)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Determine start and end times
+    if args.time:
+        center_time = parse_time(args.time, base_datetime)
+        
+        if args.margin:
+            margin_secs = parse_duration(args.margin)
+            start_time = center_time - timedelta(seconds=margin_secs)
+            end_time = center_time + timedelta(seconds=margin_secs)
+        elif args.range:
+            range_secs = parse_duration(args.range)
+            half_range = range_secs / 2
+            start_time = center_time - timedelta(seconds=half_range)
+            end_time = center_time + timedelta(seconds=half_range)
+        else:
+            print("ERROR: --time requires --margin or --range", file=sys.stderr)
+            sys.exit(1)
+    
+    elif args.start:
+        start_time = parse_time(args.start, base_datetime)
+        
+        if args.end:
+            end_time = parse_time(args.end, base_datetime)
+        elif args.range:
+            print("WARNING: --start without --end. --start accepted as center --time", file=sys.stderr)
+            range_secs = parse_duration(args.range)
+            half_range = range_secs / 2
+            center_time = start_time
+            start_time = center_time - timedelta(seconds=half_range)
+            end_time = center_time + timedelta(seconds=half_range)
+        else:
+            print("ERROR: --start requires --end or --range", file=sys.stderr)
+            sys.exit(1)
+    
+    else:
+        print("ERROR: Must specify --time or --start", file=sys.stderr)
+        sys.exit(1)
+    
+    # Read input file
+    try:
+        data, bad_lines = read_ecg_file(args.input)
+    except FileNotFoundError:
+        print(f"ERROR: File not found: {args.input}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Failed to read file: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Report bad lines
+    for line_num, line_text in bad_lines:
+        print(f"Bad line {line_num}: '{line_text}'")
+    
+    if not data:
+        print("ERROR: No valid data in file", file=sys.stderr)
+        sys.exit(1)
+    
+    # Calculate file statistics
+    first_millis = data[0][0]
+    last_millis = data[-1][0]
+    total_samples = len(data)
+    total_duration_ms = last_millis - first_millis
+    total_duration_secs = total_duration_ms / 1000.0
+    
+    # Convert start/end times to milliseconds offset from file start
+    start_offset_secs = (start_time - base_datetime).total_seconds()
+    end_offset_secs = (end_time - base_datetime).total_seconds()
+    start_offset_ms = start_offset_secs * 1000
+    end_offset_ms = end_offset_secs * 1000
+    
+    # Extract data in range
+    extracted = []
+    for millis, value in data:
+        if start_offset_ms <= millis <= end_offset_ms:
+            extracted.append((millis, value))
+    
+    # Check for clipping
+    clipped_start = False
+    clipped_end = False
+    if start_offset_ms < first_millis:
+        print(f"WARNING: Requested start time is before file start, clipping to file start")
+        clipped_start = True
+    if end_offset_ms > last_millis:
+        print(f"WARNING: Requested end time is after file end, clipping to file end")
+        clipped_end = True
+    
+    # Calculate extracted statistics
+    extracted_samples = len(extracted)
+    if extracted_samples > 0:
+        extracted_first_ms = extracted[0][0]
+        extracted_last_ms = extracted[-1][0]
+        extracted_duration_ms = extracted_last_ms - extracted_first_ms
+        extracted_duration_secs = extracted_duration_ms / 1000.0
+        
+        # The new file's timestamp should be based on the first sample's actual time
+        actual_start_time = base_datetime + timedelta(milliseconds=extracted_first_ms)
+    else:
+        extracted_duration_secs = 0
+        # If no data extracted, use the requested start time
+        actual_start_time = start_time
+        print("WARNING: No samples found in requested range")
+    
+    # Generate output filename with AM/PM
+    hour_24 = actual_start_time.hour
+    ampm = 'AM' if hour_24 < 12 else 'PM'
+    output_filename = (f"{actual_start_time.strftime('%Y-%m-%d--%H:%M')}{ampm}"
+                      f"{original_tag}--extract")
+    
+    # Print statistics
+    print(f"\nOriginal file: {args.input}")
+    print(f"Total samples: {total_samples}")
+    print(f"Total duration: {format_duration(total_duration_secs)}")
+    print(f"\nExtracted samples: {extracted_samples}")
+    print(f"Extracted duration: {format_duration(extracted_duration_secs)}")
+    print(f"\nOutput filename: {output_filename}")
+    
+    # Write file if not dry-run
+    if not args.not_dry:
+        print("\nWARNING: Dry run. Use -N to write file")
+    else:
+        output_path = Path(output_filename)
+        if output_path.exists() and not args.force:
+            print(f"\nERROR: Output file exists: {output_filename}. Use --force to overwrite", 
+                  file=sys.stderr)
+            sys.exit(1)
+        
+        if extracted_samples == 0:
+            print("\nERROR: Cannot write file with no samples", file=sys.stderr)
+            sys.exit(1)
+        
+        # Write with millis adjusted to start from the first extracted sample
+        first_extracted_millis = extracted[0][0]
+        with open(output_filename, 'w') as f:
+            for millis, value in extracted:
+                # Adjust millis to be relative to new file start (first sample = 0)
+                new_millis = millis - first_extracted_millis
+                f.write(f"{new_millis} {value}\n")
+        
+        print(f"\nFile written: {output_filename}")
+
+
+if __name__ == '__main__':
+    main()
