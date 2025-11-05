@@ -30,6 +30,8 @@ argpa.add_argument("--focus-time", type=str, default=None,
                    help="Focus time (HH:MM:SS, HH:MM, or seconds). Requires --data-start-time or timestamp in filename.")
 argpa.add_argument("--focus-percent", type=float, default=None, help="Focus averaging on cycles near this percentage (0-100) of recording")
 argpa.add_argument("--max-cycles", type=int, default=30, help="Maximum number of cycles to include in average (default: 30)")
+argpa.add_argument("--align-cross-correlation", action='store_true', 
+                   help="Use weighted cross-correlation alignment to reduce 60Hz jitter (two-pass averaging)")
 args = argpa.parse_args()
 
 # If analyze is requested, enable avg too
@@ -284,9 +286,49 @@ def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
 	
 	return good_indices, rejection_reasons
 
+def align_cycle_to_template(cycle, template):
+	"""
+	Align a cycle to a template using weighted cross-correlation.
+	Weights based on amplitude - high amplitude features (QRS) dominate alignment.
+	
+	Parameters:
+	-----------
+	cycle : array
+		Cycle to align
+	template : array
+		Reference template (must be same length as cycle)
+	
+	Returns:
+	--------
+	aligned_cycle : array
+		Cycle shifted to align with template
+	shift : int
+		Number of samples shifted (positive = right, negative = left)
+	"""
+	# Create amplitude-based weights (QRS dominates, baseline ignored)
+	weight = np.abs(template)
+	weight = weight / np.max(weight)  # Normalize 0-1
+	weight = weight ** 4  # Square it - heavily weight high amplitude regions
+	
+	# Weighted cross-correlation
+	weighted_cycle = cycle * weight
+	weighted_template = template * weight
+	
+	correlation = signal.correlate(weighted_cycle, weighted_template, mode='same')
+	
+	# Find optimal shift
+	center_idx = len(correlation) // 2
+	optimal_idx = np.argmax(correlation)
+	shift = optimal_idx - center_idx
+	
+	# Apply shift (circular shift to avoid edge issues)
+	aligned_cycle = np.roll(cycle, shift)
+	
+	return aligned_cycle, shift
+
 def average_cycles(cycles, cycle_times, r_peak_times_ms=None, 
-                   focus_percentage=None, focus_time_s=None, max_cycles=50,
-                   target_length_percentile=85, sample_rate=None):
+                   focus_percentage=None, focus_time_s=None, max_cycles=30,
+                   target_length_percentile=85, sample_rate=None, use_alignment=False):
 	"""
 	Average multiple heartbeat cycles with intelligent cycle selection and time-stretching.
 	
@@ -308,6 +350,8 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 		Percentile of cycle lengths to use as target (default 85 for high resolution)
 	sample_rate : float
 		Sampling rate in Hz (needed for time array reconstruction)
+	use_alignment : bool
+		If True, use two-pass alignment with weighted cross-correlation
 	
 	Returns:
 	--------
@@ -378,9 +422,30 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 			resampled = resample(cycle, target_length)
 			resampled_cycles.append(resampled)
 	
-	# Step 4: Average the resampled cycles
-	resampled_array = np.array(resampled_cycles)
-	averaged_cycle = np.mean(resampled_array, axis=0)
+	# Step 4: Two-pass averaging with alignment (if enabled)
+	if use_alignment:
+		print(f"   Using two-pass alignment (weighted cross-correlation)")
+		
+		# Pass 1: Create initial template from mean
+		template = np.mean(resampled_cycles, axis=0)
+		
+		# Pass 2: Align all cycles to template
+		aligned_cycles = []
+		shifts = []
+		for cycle in resampled_cycles:
+			aligned_cycle, shift = align_cycle_to_template(cycle, template)
+			aligned_cycles.append(aligned_cycle)
+			shifts.append(shift)
+		
+		print(f"   Alignment shifts: mean={np.mean(shifts):.1f}, std={np.std(shifts):.1f}, range=[{min(shifts)}, {max(shifts)}]")
+		
+		# Final average of aligned cycles
+		averaged_cycle = np.mean(aligned_cycles, axis=0)
+		resampled_cycles = aligned_cycles  # Use aligned cycles for plotting
+	else:
+		# Single-pass average (original method)
+		resampled_array = np.array(resampled_cycles)
+		averaged_cycle = np.mean(resampled_array, axis=0)
 	
 	# Step 5: Reconstruct time array for averaged cycle
 	# Use the target_duration that matches our target_length_percentile
@@ -794,7 +859,8 @@ def prepdata(millis=None, vals=None):
 					focus_percentage=args.focus_percent,
 					focus_time_s=calculated_focus_time_s,
 					max_cycles=args.max_cycles,
-					target_length_percentile=5, sample_rate=sam_per_sec)
+					target_length_percentile=5, sample_rate=sam_per_sec,
+					use_alignment=args.align_cross_correlation)
 				
 				print(f"   Averaged {len(selected_indices)} cycles")
 				
