@@ -353,12 +353,20 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 		print(f"   Using first {max_cycles} cycles (no focus specified)")
 	
 	selected_cycles = [cycles[i] for i in selected_indices]
+	selected_cycle_times = [cycle_times[i] for i in selected_indices]
 	
 	# Step 2: Determine target length (use percentile for good resolution)
 	cycle_lengths = [len(c) for c in selected_cycles]
 	target_length = int(np.percentile(cycle_lengths, target_length_percentile))
+	
+	# Also calculate target DURATION at the same percentile
+	cycle_durations_ms = [ct[-1] - ct[0] for ct in selected_cycle_times]
+	target_duration_ms = np.percentile(cycle_durations_ms, target_length_percentile)
+	
 	print(f"   Target length: {target_length} samples ({target_length_percentile}th percentile)")
+	print(f"   Target duration: {target_duration_ms:.1f}ms")
 	print(f"   Cycle length range: {min(cycle_lengths)} - {max(cycle_lengths)} samples")
+	print(f"   Cycle duration range: {min(cycle_durations_ms):.1f} - {max(cycle_durations_ms):.1f}ms")
 	
 	# Step 3: Resample all cycles to target length
 	resampled_cycles = []
@@ -375,21 +383,14 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 	averaged_cycle = np.mean(resampled_array, axis=0)
 	
 	# Step 5: Reconstruct time array for averaged cycle
-	# Use the original cycle_times[0] as a template but adjust for target length
-	if sample_rate is not None:
-		# Calculate time step based on sample rate
-		dt_ms = 1000.0 / sample_rate
-		# Create time array: same duration as original but with target_length samples
-		original_duration_ms = cycle_times[0][-1] - cycle_times[0][0]
-		averaged_time = np.linspace(cycle_times[0][0], 
-		                            cycle_times[0][0] + original_duration_ms,
-		                            target_length)
-	else:
-		# Fallback: just use first cycle's time array resampled
-		averaged_time = resample(cycle_times[0], target_length)
+	# Use the target_duration that matches our target_length_percentile
+	# Get the starting offset from first cycle (typically negative for pre-R-peak data)
+	time_start_offset = selected_cycle_times[0][0]
+	averaged_time = np.linspace(time_start_offset, 
+	                            time_start_offset + target_duration_ms,
+	                            target_length)
 	
 	return averaged_cycle, averaged_time, selected_indices, resampled_cycles, averaged_time
-
 
 
 def detect_pqrst_features(cycle, cycle_time, fs):
