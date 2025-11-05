@@ -11,6 +11,7 @@ from scipy import signal
 from scipy.signal import find_peaks, butter, lfilter, freqz, iirnotch
 from signalgen import sine_wave_samps
 import argparse
+from scipy.signal import resample
 
 argpa = argparse.ArgumentParser(
 		description='Plot ECG/EKG file. Line format: ms val\\n')
@@ -205,7 +206,7 @@ def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
 	
 	return good_indices, rejection_reasons
 
-def average_cycles(cycles, cycle_times):
+def average_cycles(cycles, cycle_times, focus_percentage=10, max_cycles=30):
 	"""
 	Average multiple heartbeat cycles.
 	Simple alignment on R-peak (already done in extraction).
@@ -540,7 +541,7 @@ def prepdata(millis=None, vals=None):
 				# Average good cycles
 				good_cycles = [cycles[i] for i in good_indices]
 				good_cycle_times = [cycle_times[i] for i in good_indices]
-				averaged_cycle, averaged_time = average_cycles(good_cycles, good_cycle_times)
+				averaged_cycle, averaged_time = average_cycles(good_cycles, good_cycle_times, sr=sam_per_sec)
 				
 				# Plot averaged cycles
 				plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, good_indices)
@@ -613,8 +614,19 @@ def prepdata(millis=None, vals=None):
 	# \/ for labeling the axvline frequencies at the axis itself
 	trans = axs[1].get_xaxis_transform()
 	acfreqidx=None
+	show_text_freqs=[]
+	max_ac_freq_mag=0
+	max_ac_freq_idx=None
 	for peakidx in peaks:
-		if freqs[peakidx] > 45 and freqs[peakidx] < 65: # our Hz
+		if freqs[peakidx] > 55 and freqs[peakidx] < 65: # our Hz
+			if ff.real[peakidx] > max_ac_freq_mag:
+				max_ac_freq_mag = ff.real[peakidx]
+				max_ac_freq_idx = peakidx
+			show_text_freqs.append({
+				'idx': int(peakidx),
+				'freq': f'{freqs[peakidx]:0.4f}',
+				'amp': f'{ff.real[peakidx]:0.4f}',
+				})
 			acfreqidx = peakidx
 			color=(.75,0,0)
 			width=4
@@ -622,22 +634,25 @@ def prepdata(millis=None, vals=None):
 			color=(0,.75,0)
 			width=2
 		axs[1].axvline(x=freqs[peakidx],
-		               color=color,
-		               linewidth=width,
-		               alpha=.20)
+					   color=color,
+					   linewidth=width,
+					   alpha=.20)
 		#print(f"Text at {freqs[peakidx]:.3f}")
 		axs[1].text(
-		        freqs[peakidx], 0,
+				freqs[peakidx], 0,
 				f"{freqs[peakidx]:.3f}",
 				transform=trans,
 				rotation=-75
 				)
+	if max_ac_freq_idx is not None:
+		acfreqidx = max_ac_freq_idx
+	print("~60Hz Frequency Peaks:", show_text_freqs)
 	amplitude_maybe = (ff[acfreqidx].real / len(ff))*2
 	print("Max freq ?", freqs[midfreqidx-2: midfreqidx+2])
 	print("Max freq :", maxfreq)
 	print("Amplitude maybe:", amplitude_maybe)
-	print("Peak indices:", peaks)
-	print("Peaks frequencies:", [freqs[i] for i in peaks])
+	# print("Peak indices:", peaks)
+	#print("Peaks frequencies:", [freqs[i] for i in peaks])
 	print("60Hz Freq: ff[acfreqidx]:", ff[acfreqidx])
 	phase60 = ff[acfreqidx].imag
 	print("60Hz Phase: ff[acfreqidx].imaj:", phase60)
