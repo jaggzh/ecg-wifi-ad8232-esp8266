@@ -90,13 +90,22 @@ def bandstop(data, lowcut, highcut, fs=None, order=2):
 
 def adc_to_mv(adc_val):
     """
-    Convert TM7705 16-bit ADC values to millivolts
+    Convert TM7705 16-bit ADC values to millivolts, then compensate for
+    AD8232's amplification (~100x)
+    
     TM7705 in bipolar mode with 2.5V reference:
     - 0 = -2.5V
     - 32767 ≈ 0V
     - 65535 = +2.5V
     """
-    return ((adc_val / 65535.0) * 5000) - 2500  # -2500mV to +2500mV range
+    # First convert ADC value to actual voltage at the ADC input
+    adc_mv = ((adc_val / 65535.0) * 5000) - 2500  # -2500mV to +2500mV range
+    
+    # Then compensate for AD8232's gain of approximately 100x
+    actual_mv = adc_mv / 150.0
+    
+    return actual_mv
+
 
 def prepdata(millis=None, vals=None):
     #x = np.linspace(0.0, N*T, N, endpoint=False)
@@ -150,6 +159,62 @@ def prepdata(millis=None, vals=None):
     # Calculate y-axis range in mV for proper scaling
     y_range = max(abs(vv_mv.min()), abs(vv_mv.max())) * 1.2
 
+    # ====== ASPECT RATIO CODE ======
+    force_aspect = False
+    if force_aspect:
+        # Set the aspect ratio for ECG standard (25mm/sec, 10mm/mV)
+        # This means 1 second (1000ms) in x-axis should be 25mm
+        # and 1mV in y-axis should be 10mm
+        # The aspect ratio is time_scale/mv_scale = 25/10 = 2.5
+        time_scale = 25.0  # mm/sec
+        mv_scale = 10.0    # mm/mV
+        standard_ratio = time_scale / mv_scale  # = 2.5
+    
+        # Instead of forcing the aspect ratio of the entire plot,
+        # we'll adjust the data limits to ensure correct scaling
+        
+        # First, get the display size of the axes in inches
+        fig.canvas.draw()  # Needed to get valid figure dimensions
+        bbox = axs[0].get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        width, height = bbox.width, bbox.height  # in inches
+        
+        # Calculate the current display ratio (width/height of plot area)
+        display_ratio = width / height
+        
+        # Calculate the unit scale factors needed for correct proportions
+        # We need to ensure that the visual length of 1 second = 2.5 * visual height of 1 mV
+        x_range = time_sec.max() - time_sec.min()
+        y_range = 2 * y_range  # We set this earlier as max amplitude * 1.2
+        
+        # Calculate appropriate y-limits to maintain the correct relative scaling
+        # while still filling the available width of the window
+        data_ratio = x_range / y_range
+        scaling_factor = (standard_ratio * display_ratio) / data_ratio
+        
+        # Apply the scaling by adjusting the y-limits
+        y_midpoint = 0  # Center at 0 mV
+        y_half_range = y_range / 2
+        y_half_range_scaled = y_half_range * scaling_factor
+        axs[0].set_ylim(y_midpoint - y_half_range_scaled, y_midpoint + y_half_range_scaled)
+        
+        # For dynamic adjustments, we need to update the scaling when the window is resized
+        def update_scaling(event):
+            if event.name == 'resize_event' or event.name == 'draw_event':
+                # Update display dimensions
+                bbox = axs[0].get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+                width, height = bbox.width, bbox.height
+                display_ratio = width / height
+                
+                # Recalculate appropriate y-limits
+                scaling_factor = (standard_ratio * display_ratio) / data_ratio
+                axs[0].set_ylim(y_midpoint - y_half_range_scaled * scaling_factor, 
+                                y_midpoint + y_half_range_scaled * scaling_factor)
+        
+        fig.canvas.mpl_connect('resize_event', update_scaling)
+        fig.canvas.mpl_connect('draw_event', update_scaling)
+    # ====== END OF ASPECT RATIO CODE ======
+
+
     # Set up grid lines for standard ECG paper look
     # Major grid (5mm squares = 0.2 sec x 0.5mV)
     axs[0].grid(which='major', linestyle='-', color=(1,0,0), linewidth=1)
@@ -160,14 +225,22 @@ def prepdata(millis=None, vals=None):
     # X-axis: major = 0.2 sec, minor = 0.04 sec
     major_ticks_x = np.arange(time_sec.min(), time_sec.max(), 0.2)
     minor_ticks_x = np.arange(time_sec.min(), time_sec.max(), 0.04)
-    # Y-axis: major = 0.5mV, minor = 0.1mV
-    major_ticks_y = np.arange(-y_range, y_range, 0.5)
-    minor_ticks_y = np.arange(-y_range, y_range, 0.1)
-
     axs[0].set_xticks(major_ticks_x)
     axs[0].set_xticks(minor_ticks_x, minor=True)
-    axs[0].set_yticks(major_ticks_y)
-    axs[0].set_yticks(minor_ticks_y, minor=True)
+
+    # Set up proper ECG grid lines and labels for Y-axis
+    # Major grid lines at 0.5mV intervals (standard ECG paper)
+    y_major_ticks = np.arange(-3.0, 3.5, 0.5)  # Adjust range as needed for your data
+    axs[0].set_yticks(y_major_ticks)
+    axs[0].set_yticklabels([f"{y:.1f}" for y in y_major_ticks])
+    # Minor grid lines at 0.1mV intervals
+    y_minor_ticks = np.arange(-3.0, 3.5, 0.1)  # Adjust range as needed for your data
+    axs[0].set_yticks(y_minor_ticks, minor=True)
+    # Configure grid appearance
+    axs[0].grid(which='major', axis='y', linestyle='-', color=(1,0,0), linewidth=1)
+    axs[0].grid(which='minor', axis='y', linestyle='-', color=(1,0.7,0.7), linewidth=0.5)
+    # Make sure yticklabels are only shown for major ticks
+    plt.setp(axs[0].get_yticklabels(minor=True), visible=False)
 
     # Set labels
     axs[0].set_xlabel('Time (seconds)')

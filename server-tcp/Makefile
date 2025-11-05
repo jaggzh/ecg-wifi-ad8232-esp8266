@@ -12,6 +12,7 @@ server_cbs: server_cbs.c server_cbs.h main.c main.h settings.h \
 		serialize.c serialize.h magicbuf.c magicbuf.h
 	gcc $(CFLAGS) -std=gnu17 -o server_cbs \
 		main.c server_cbs.c serialize.c \
+		textplot.c \
 		magicbuf.c \
 		-pthread
 
@@ -28,6 +29,7 @@ vi:
 		server_cbs.h \
 		main.c \
 		main.h \
+		textplot.[ch] \
 		magicbuf.c \
 		magicbuf.h \
 		../netdata-settings.h \

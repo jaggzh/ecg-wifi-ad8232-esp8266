@@ -19,6 +19,10 @@
 #include "serialize.h"
 #include "magicbuf.h"
 #include "../netdata-settings.h"
+#include "textplot.h"
+
+int verbose=0;
+int opt_textplot=0;
 
 struct CMDConnData {
     char login;
@@ -32,9 +36,20 @@ struct CMDConnData connst = {
 };
 
 int main(int argc, char *argv[]) {
-	setup();
-	svr_start(PORT); // doesn't end until dead
-	return 0;        // probably never gets here
+    for (int i=1; i<argc; i++) {
+	if (!strcmp(argv[i], "-v")) {
+	    verbose++;
+	} else if (!strcmp(argv[i], "-t")) {
+	    opt_textplot=1;
+	} else {
+	    printf("Unknown option: %s, use -v for increase verbosity.\n", argv[i]);
+	    exit(1);
+	}
+    }
+    setup();
+    /* if (opt_textplot) setup_textplot(); */  // textplot() does this on first now
+    svr_start(PORT); // doesn't end until dead
+    return 0;        // probably never gets here
 }
 
 void setup() {
@@ -87,6 +102,12 @@ void handle_bundle_data(uint8_t *buf, uint32_t blen) {
 		us = unpacku32(s);   s += 4;
 		val = unpacku16(s);  s += 2;
 		//printf("us: %lu  val: %u\n", us, val);
+		fprintf(connst.dataf, "%lu %u\n", us, val);
+		if (opt_textplot) {
+			textplot(us, val);
+		} else if (verbose > 1) {
+			printf("%lu %u\n", us, val);
+		}
 		fprintf(connst.dataf, "%lu %u\n", us, val);
 	}
 	printf("Wrote %d samples\n", i);
