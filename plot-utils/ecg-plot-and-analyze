@@ -21,6 +21,8 @@ argpa.add_argument("-N", "--noautonotch", action='store_true', help="Disable plo
 argpa.add_argument("-R", "--noraw", action='store_true', help="Disable raw data plot")
 argpa.add_argument("--avg", action='store_true', help="Average heartbeat cycles for clean template")
 argpa.add_argument("-A", "--analyze", action='store_true', help="Analyze ECG features (implies --avg)")
+argpa.add_argument("--no-avg-plot-resampled", action='store_true', help="Don't plot resampled cycles in average plot")
+argpa.add_argument("--no-avg-plot-selected", action='store_true', help="Don't plot original selected cycles in average plot")
 args = argpa.parse_args()
 
 # If analyze is requested, enable avg too
@@ -120,11 +122,15 @@ def detect_r_peaks(data, fs, min_distance_ms=300):
 	
 	return peaks
 
-def extract_cycles(data, ms, r_peaks, fs, pre_ms=300, post_ms=700):
+
+def extract_cycles(data, ms, r_peaks, fs, pre_ms=200, post_ms=200):
 	"""
-	Extract individual heartbeat cycles centered on R-peaks.
-	pre_ms: milliseconds before R-peak to include
-	post_ms: milliseconds after R-peak to include
+	Extract individual heartbeat cycles from R-peak to R-peak (variable duration).
+	pre_ms: milliseconds before R-peak to include (for P-wave capture)
+	post_ms: milliseconds after next R-peak to include (for visual context)
+	
+	Each cycle runs from (R-peak - pre_ms) to (next R-peak + post_ms), giving variable-length
+	cycles that reflect actual heart rate variability, plus context beyond the cycle.
 	"""
 	pre_samples = int((pre_ms / 1000.0) * fs)
 	post_samples = int((post_ms / 1000.0) * fs)
@@ -133,19 +139,25 @@ def extract_cycles(data, ms, r_peaks, fs, pre_ms=300, post_ms=700):
 	cycle_times = []
 	cycle_indices = []
 	
-	for i, peak_idx in enumerate(r_peaks):
-		start_idx = peak_idx - pre_samples
-		end_idx = peak_idx + post_samples
+	# Extract from R-peak to R-peak (skip last peak since it has no "next")
+	for i in range(len(r_peaks) - 1):
+		current_r = r_peaks[i]
+		next_r = r_peaks[i + 1]
+		
+		start_idx = current_r - pre_samples
+		end_idx = next_r + post_samples  # Add context past next R-peak
 		
 		# Make sure we're within bounds
 		if start_idx >= 0 and end_idx < len(data):
 			cycle_data = data[start_idx:end_idx]
-			cycle_time = ms[start_idx:end_idx] - ms[peak_idx]  # Normalize time to R-peak
+			# Time relative to R-peak (current_r is at time = pre_ms in the cycle)
+			cycle_time = ms[start_idx:end_idx] - ms[current_r]
 			cycles.append(cycle_data)
 			cycle_times.append(cycle_time)
 			cycle_indices.append(i)
 	
 	return cycles, cycle_times, cycle_indices
+
 
 def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
 	"""
@@ -173,8 +185,8 @@ def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
 		reasons = []
 		
 		# Check 1: RR interval (if not first or last beat)
-		if i > 0 and i < len(rr_intervals):
-			rr = rr_intervals[i-1]
+		if i < len(rr_intervals):
+			rr = rr_intervals[i]
 			if rr < 300 or rr > 2300:  # 30-230 bpm range
 				reasons.append(f"RR interval {rr:.0f}ms out of range (300-2300ms)")
 		
@@ -207,7 +219,7 @@ def reject_artifacts(cycles, cycle_times, r_peaks, ms, fs):
 	return good_indices, rejection_reasons
 
 def average_cycles(cycles, cycle_times, r_peak_times_ms=None, 
-                   focus_percentage=None, focus_time_s=None, max_cycles=30,
+                   focus_percentage=None, focus_time_s=None, max_cycles=50,
                    target_length_percentile=85, sample_rate=None):
 	"""
 	Average multiple heartbeat cycles with intelligent cycle selection and time-stretching.
@@ -239,14 +251,17 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 		Time array for averaged cycle
 	selected_indices : list
 		Indices of cycles that were selected and averaged
+	resampled_cycles : list of arrays
+		Individual cycles after resampling (for plotting)
+	resampled_time : array
+		Common time array for resampled cycles
 	"""
 	if len(cycles) == 0:
-		return None, None, []
+		return None, None, [], [], None
 	
 	# Step 1: Select cycles based on focus parameters
 	selected_indices = list(range(len(cycles)))
 	
-	import ipdb; ipdb.set_trace(context=5); pass
 	if r_peak_times_ms is not None and (focus_percentage is not None or focus_time_s is not None):
 		# Calculate focus time
 		if focus_percentage is not None:
@@ -307,7 +322,9 @@ def average_cycles(cycles, cycle_times, r_peak_times_ms=None,
 		# Fallback: just use first cycle's time array resampled
 		averaged_time = resample(cycle_times[0], target_length)
 	
-	return averaged_cycle, averaged_time, selected_indices
+	return averaged_cycle, averaged_time, selected_indices, resampled_cycles, averaged_time
+
+
 
 def detect_pqrst_features(cycle, cycle_time, fs):
 	"""
@@ -374,29 +391,60 @@ def calculate_intervals(features, rr_interval_ms=None):
 	
 	return intervals
 
-def plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, good_indices):
+def plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, 
+                        selected_indices, resampled_cycles=None, resampled_time=None,
+                        plot_selected=True, plot_resampled=True):
 	"""
 	Plot individual cycles (transparent) and averaged cycle (bold).
+	
+	Parameters:
+	-----------
+	cycles : list of arrays
+		All original cycles
+	cycle_times : list of arrays
+		Time arrays for original cycles
+	averaged_cycle : array
+		The averaged cycle
+	averaged_time : array
+		Time array for averaged cycle
+	selected_indices : list
+		Indices of cycles that were selected for averaging
+	resampled_cycles : list of arrays, optional
+		Resampled cycles (aligned for averaging)
+	resampled_time : array, optional
+		Common time array for resampled cycles
+	plot_selected : bool
+		Whether to plot original selected cycles
+	plot_resampled : bool
+		Whether to plot resampled cycles
 	"""
 	fig, ax = plt.subplots(figsize=(12, 6))
 	
-	# Plot individual good cycles (transparent)
-	for i in good_indices:
-		ax.plot(cycle_times[i], cycles[i], 
-		        color=(0.7, 0.7, 0.7), alpha=0.3, linewidth=0.5)
+	# Plot original selected cycles first (gray, transparent)
+	if plot_selected:
+		for i in selected_indices:
+			ax.plot(cycle_times[i], cycles[i], 
+			        color=(0.7, 0.7, 0.7), alpha=0.3, linewidth=0.5)
 	
-	# Plot averaged cycle (bold)
+	# Plot resampled cycles on top (light blue, transparent)
+	if plot_resampled and resampled_cycles is not None and resampled_time is not None:
+		for resampled_cycle in resampled_cycles:
+			ax.plot(resampled_time, resampled_cycle,
+			        color=(0.9, 0.9, 1.0), alpha=0.4, linewidth=0.5)
+	
+	# Plot averaged cycle (bold green)
 	ax.plot(averaged_time, averaged_cycle, 
 	        color=(0, 0.5, 0), linewidth=3, label='Averaged Cycle')
 	
 	ax.axvline(x=0, color='red', linestyle='--', alpha=0.5, label='R-peak')
 	ax.set_xlabel('Time from R-peak (ms)')
 	ax.set_ylabel('Amplitude')
-	ax.set_title(f'Averaged Heartbeat Cycle (n={len(good_indices)} cycles)')
+	ax.set_title(f'Averaged Heartbeat Cycle (n={len(selected_indices)} cycles)')
 	ax.legend()
 	ax.grid(True, alpha=0.3)
 	
 	return fig
+
 
 def plot_analysis(averaged_cycle, averaged_time, features, intervals):
 	"""
@@ -626,15 +674,18 @@ def prepdata(millis=None, vals=None):
 				good_cycle_times = [cycle_times[i] for i in good_indices]
 				r_peak_times_ms = ms[r_peaks][np.array(good_indices)]
 				
-				averaged_cycle, averaged_time, selected_indices = average_cycles(
+				averaged_cycle, averaged_time, selected_indices, resampled_cycles, resampled_time = average_cycles(
 					good_cycles, good_cycle_times, r_peak_times_ms,
-					focus_time_s=1, max_cycles=50,
+                    focus_percentage=.4, focus_time_s=None, max_cycles=30,
 					target_length_percentile=85, sample_rate=sam_per_sec)
 				
 				print(f"   Averaged {len(selected_indices)} cycles")
 				
 				# Plot averaged cycles
-				plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, good_indices)
+				plot_averaged_cycles(cycles, cycle_times, averaged_cycle, averaged_time, 
+				                    selected_indices, resampled_cycles, resampled_time,
+				                    plot_selected=not args.no_avg_plot_selected,
+				                    plot_resampled=not args.no_avg_plot_resampled)
 				
 				# If analyze flag, do full feature detection
 				if args.analyze:
