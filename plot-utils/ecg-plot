@@ -132,9 +132,10 @@ def prepdata(millis=None, vals=None):
 	if not args.noraw:
 		axs[0].plot(ms,
 					vv,
-					label='ECG Data',
+					label='ECG Data (Raw)',
 					linewidth=1,
 					color=(.85, .85, 1)
+					# color=(1, 0, 1)
 				)
 
 	# Lowpass
@@ -207,12 +208,16 @@ def prepdata(millis=None, vals=None):
 			axs[0].plot(ms,
 						filtered,
 						label=f"Notch-Filtered +{freqs[acfreqidx]:.2f}Hz q10",
-						linewidth=1)
+						linewidth=5,
+			            color='black',
+			   )
 		filtered = notch(vv, 60, sam_per_sec, quality=10)
 		axs[0].plot(ms,
 		            filtered,
 		            label="1Hz Highpass + 60Hz Notch Filter",
-		            linewidth=1, color='black')
+		            linewidth=1,
+                    color=(.9, 0.9, 1.0),
+              )
 
 	# # Good
 	# # 59,60,61 notch works well
