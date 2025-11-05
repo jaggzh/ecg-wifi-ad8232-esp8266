@@ -32,7 +32,12 @@ def proclog(fn=None):
 	millis = []  # millis
 	vals = []
 	f = open(args.file)
+	cnt=0
 	for line in f:
+		cnt += 1
+		if ' ' not in line:
+			print(f"ERROR: Line {cnt} missing space separator. Bad data at line {cnt}")
+			next
 		ms, val = line.strip().split(" ")
 		ms = float(ms)
 		val = float(val)
