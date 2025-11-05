@@ -225,6 +225,23 @@ def prepdata(millis=None, vals=None):
 	# filtered = notch(filtered, 60, sam_per_sec, quality=10)
 	# filtered = notch(filtered, 61, sam_per_sec, quality=10)
 	# axs[0].plot(ms, filtered, label="Notch-Filtered 59,60,61 q10")
+	
+	# More aggressive bandstop filters - try these!
+	# Option 1: Tighter bandstop 59-63 Hz with moderate order
+	filtered_bs1 = bandstop(vv, 59, 63, fs=sam_per_sec, order=5)
+	axs[0].plot(ms, filtered_bs1, label="Bandstop 59-63Hz o5", linewidth=1.5, color=(0, 0.7, 0))
+	
+	# # Option 2: Multiple sequential notch filters for surgical removal
+	# filtered_multi = notch(vv, 59, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 60, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 61, sam_per_sec, quality=10)
+	# filtered_multi = notch(filtered_multi, 62, sam_per_sec, quality=10)
+	# axs[0].plot(ms, filtered_multi, label="Multi-notch 59-62Hz q10", linewidth=1.5, color=(0.7, 0, 0.7))
+	
+	# # Option 3: Bandstop with higher order for sharper cutoff
+	# filtered_bs2 = bandstop(vv, 58, 63, fs=sam_per_sec, order=8)
+	# axs[0].plot(ms, filtered_bs2, label="Bandstop 58-63Hz o8", linewidth=1.5, color=(0, 0.5, 0.7))
+
 
 	# filtered = bandstop(vv, 50, 65, fs=sam_per_sec, order=2)
 	# axs[0].plot(ms, filtered, label="Bandstop 50-65 o2")
