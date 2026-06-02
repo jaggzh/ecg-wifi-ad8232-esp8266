@@ -4,6 +4,10 @@
 
 This project currently uses a red AD3232 ECG board (Sparkfun or clone) on an ESP8266. My `server-tcp/server_cbs` is a nice fast .c server that receives the optimized packets of ECG data and logs them. It supports the use of a button on the ECG device which lets you start and mark events, switching to a new logfile so you can have your events separated. This also makes it easier to have nice "small" logs just for events. This also lets you, much easier, run `plot-utils/ecg-plot-and-analyze` on a specific log file:
 
+**One warning:** *When you get the plot windows up -- you have to drag the window size to get the grid cells to be "square" instead of rectangles. This is because your cardiologist is used to 1:1 grids. I just size the window by sight, and our cardiologist was impressed with the quality of the ECG plots!*
+
+**One other tip:** *Weave your leads to reduce your 60 or 50hz noise. I do auto-detect and filter it out, but I prefer the cleanest initial signal.*
+
 ## See our [New Analysis and Really Clean Averaging](#analysis-of-cycles)
 
 Following [how2electronics.com's guide](https://how2electronics.com/iot-ecg-monitoring-ad8232-ecg-sensor-esp8266/#Circuit_Diagram_Interfacing_AD8232_ECG_Sensor_with_NodeMCU_ESP8266), it is
